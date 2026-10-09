@@ -1,0 +1,42 @@
+name: Release
+
+# Push a tag like v0.3.0 to publish a release. The tag must match the version in
+# pyproject.toml and src/smisim/__init__.py, and CHANGELOG.md needs a
+# "## 0.3.0 (YYYY-MM-DD)" section; its text becomes the release notes.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e ".[dev]" build
+      - name: Check tag, version and changelog
+        run: python scripts/release_check.py "$GITHUB_REF_NAME" --notes release-notes.md
+      - name: Lint and test
+        run: |
+          ruff check .
+          ruff format --check .
+          pytest -q
+      - name: Build sdist and wheel
+        run: python -m build
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --verify-tag \
+            --title "smi-bus-simulator ${GITHUB_REF_NAME#v}" \
+            --notes-file release-notes.md \
+            $prerelease

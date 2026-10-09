@@ -145,11 +145,17 @@ src/smisim/
 
 ## Status and limits
 
-This is an early release (0.1). The basic command set is based on observed captures.
-Discovery, address writing, extended queries and the SMI 3.0 D14 properties use
-**provisional** encodings until someone with access to the specification confirms or
-corrects them. Each one is marked in the UI, in the monitor and in
-[docs/protocol.md](docs/protocol.md). Corrections are very welcome.
+The project is pre-1.0. The current version and what changed in each release are in
+[CHANGELOG.md](CHANGELOG.md); releases are on the
+[GitHub releases page](https://github.com/CodeSmithBob/smi-bus-simulator/releases). The
+[Python in-process API](docs/api.md#python-in-process-api-stable) follows semantic
+versioning; everything else may still change between minor versions.
+
+The basic command set is based on observed captures. Discovery, address writing and the
+extended queries use **provisional** encodings until someone with access to the
+specification confirms or corrects them. Each one is marked in the UI, in the monitor and
+in [docs/protocol.md](docs/protocol.md). SMI 3.0 D14 properties and parameter read/write
+are not modelled yet. Corrections are very welcome.
 
 ## License
 

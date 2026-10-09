@@ -58,6 +58,27 @@ step. Reload the browser after editing.
 * A sun-position view that shows which facade gets direct sun
 * Translations of the UI
 
+## Releases
+
+Versions follow [Semantic Versioning](https://semver.org/). The stable Python API and the
+pre-1.0 rule (breaking changes bump the minor version) are described in
+[docs/api.md](docs/api.md). Every change that users notice gets a line under
+*Unreleased* in [CHANGELOG.md](CHANGELOG.md), in the same pull request.
+
+To publish a release (maintainers):
+
+1. In `CHANGELOG.md`, rename *Unreleased* to `## X.Y.Z (YYYY-MM-DD)` and add a new, empty
+   *Unreleased* section above it. List breaking changes to the stable API under *Breaking*.
+2. Set the version in `pyproject.toml` and `src/smisim/__init__.py` to `X.Y.Z`.
+3. Check locally: `python scripts/release_check.py vX.Y.Z` prints the release notes, or
+   says what does not match.
+4. Commit (`Release X.Y.Z`), push, wait for CI, then tag and push the tag:
+   `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+The *Release* workflow (`.github/workflows/release.yml`) then runs the checks and tests,
+builds the sdist and wheel, and publishes a GitHub release with those files and the
+changelog section as notes. Tags with a suffix (`v0.4.0-rc1`) become pre-releases.
+
 ## Pull requests
 
 1. Fork the repository and create a branch.

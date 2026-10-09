@@ -1,19 +1,11 @@
 # Changelog
 
+All notable changes, one section per release, newest first. Versions follow
+[Semantic Versioning](https://semver.org/); the stable Python API is listed in
+[docs/api.md](docs/api.md). New entries go under *Unreleased* and move to a
+`## X.Y.Z (YYYY-MM-DD)` section when the release is tagged (see CONTRIBUTING.md).
+
 ## Unreleased
-
-### Changed
-
-* `time_scale` is checked the same way everywhere (0.1 to 50): CLI, config file, HTTP API.
-  `smisim run --time-scale` now also overrides the value from `--config` (it was ignored).
-
-### Documentation
-
-* docs/configuration.md lists a public source or "assumption" for every default timing
-  value (travel time, shaft rotation, upward factor, reversal pause, slat range, thermal
-  limit, cooldown, answer delay, slow fault). The default travel times and shaft degrees
-  imply faster shafts than published drive speeds; this is documented with a formula to
-  adjust them. A test keeps the table in sync with the code.
 
 ### Added
 
@@ -27,6 +19,26 @@
 * Venetian option `tilt_in_position` (off by default, provisional): the reported position
   counts slat turning as drive-shaft rotation, so angle steps move it. New read-only
   `Motor.reported_position`; the Drive tab shows the value reported over SMI.
+* Release workflow: pushing a `v*` tag checks that the tag, `pyproject.toml`,
+  `smisim.__version__` and CHANGELOG agree, runs lint and tests, builds the sdist and
+  wheel, and publishes a GitHub release with the changelog section as notes
+  (`scripts/release_check.py`).
+
+### Changed
+
+* `time_scale` is checked the same way everywhere (0.1 to 50): CLI, config file, HTTP API.
+  `smisim run --time-scale` now also overrides the value from `--config` (it was ignored).
+
+### Documentation
+
+* `time_scale` (CLI, config file, HTTP API, web UI) in README and docs/configuration.md.
+* docs/configuration.md lists a public source or "assumption" for every default timing
+  value (travel time, shaft rotation, upward factor, reversal pause, slat range, thermal
+  limit, cooldown, answer delay, slow fault). The default travel times and shaft degrees
+  imply faster shafts than published drive speeds; this is documented with a formula to
+  adjust them. A test keeps the table in sync with the code.
+* Releases: README no longer names a stale version; CHANGELOG keeps one section per
+  release; CONTRIBUTING describes the release steps.
 
 ## 0.2.0 (2026-10-09)
 
