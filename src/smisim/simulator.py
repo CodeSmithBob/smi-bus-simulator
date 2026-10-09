@@ -9,7 +9,7 @@ import time
 
 from .bus import Bus, BusSettings
 from .config import BusConfig, SimConfig, generate
-from .motor import FAULTS, MotorConfig, MotorUpdate
+from .motor import DRIVE_PROFILES, FAULTS, MotorConfig, MotorUpdate
 from .protocol.constants import SPEC_STATUS, Command, DiagCode, QueryCode
 from .protocol.frames import (
     Addressing,
@@ -34,6 +34,12 @@ PRESETS = {
         "label": "16 factory-new drives, all on address 0 (commissioning practice)",
     },
     "small": {"buses": 1, "motors": 4, "label": "1 line, 4 drives"},
+    "mechanics-16": {
+        "buses": 1,
+        "motors": 16,
+        "kind": "mixed-mechanics",
+        "label": "16 drives with mixed mechanics (slack, end offsets) that need calibration",
+    },
 }
 
 
@@ -152,6 +158,7 @@ class Simulator:
         layouts = generate(
             buses=want,
             motors_per_bus=preset["motors"],
+            kind=preset.get("kind", "mixed"),
             factory_new=preset.get("factory_new", False),
             tcp_base_port=0,
         )
@@ -187,9 +194,12 @@ class Simulator:
         free = next((a for a in range(16) if a not in used), 0)
         data.setdefault("address", free)
         data.setdefault("name", f"Drive {bus_index + 1}.{len(bus.motors) + 1:02d}")
-        data.setdefault("kind", "venetian")
         if isinstance(data.get("key_id"), str):
             data["key_id"] = int(data["key_id"], 16)
+        profile = data.pop("profile", "")
+        if profile:
+            return bus.add_motor(MotorConfig.from_profile(profile, **data))
+        data.setdefault("kind", "venetian")
         return bus.add_motor(MotorConfig(**data))
 
     def update_motor(self, uid: int, data: dict) -> None:
@@ -291,6 +301,7 @@ class Simulator:
             "presets": {k: v["label"] for k, v in PRESETS.items()},
             "spec_status": {k: {"status": s, "source": src} for k, (s, src) in SPEC_STATUS.items()},
             "kinds": ["roller", "venetian", "screen", "awning"],
+            "profiles": DRIVE_PROFILES,
         }
 
 

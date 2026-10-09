@@ -70,3 +70,21 @@ def test_documented_values_match_the_code():
         listed = {(r["name"], r["extra"]) for r in table_rows()}
         assert ("travel_time_s", f"({kind.value})") in listed
         assert ("shaft_degrees", f"({kind.value})") in listed
+
+
+def test_profile_table_matches_the_code():
+    from smisim import DRIVE_PROFILES, MotorConfig
+
+    section = DOC.read_text().split("## Drive mechanics and profiles", 1)[1].split("\n## ", 1)[0]
+    rows = {}
+    for line in section.splitlines():
+        cells = [c.strip().strip("`") for c in line.strip("|").split("|")]
+        if len(cells) == 7 and cells[0] in DRIVE_PROFILES:
+            rows[cells[0]] = cells
+            assert "**Assumption" in cells[6], line
+    assert set(rows) == set(DRIVE_PROFILES)
+    for name, cells in rows.items():
+        cfg = MotorConfig.from_profile(name)
+        assert cells[1] == cfg.kind.value
+        assert float(cells[2]) == cfg.tilt_degrees
+        assert [int(c) for c in cells[3:6]] == [cfg.slack, cfg.top_offset, cfg.bottom_offset]

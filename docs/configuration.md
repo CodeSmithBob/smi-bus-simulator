@@ -83,10 +83,55 @@ The in-process Python API has no `time_scale`: you choose the `dt` you pass to
 | `slat_max_deg` | `85` | Physical slat angle at 100 % (closed). Use `-80` / `80` for 180° blinds. |
 | `reversal_pause_s` | `0.3` | Dead time when the direction is reversed while running |
 | `tilt_in_position` | `false` | Venetian only, **provisional**: the reported position counts slat turning as drive-shaft rotation, so angle steps move it ([protocol.md §2.7](protocol.md#27-position-scale-of-venetian-drives-optional-provisional)) |
+| `slack` | `0` | Gear backlash in raw position units: dead zone after every change of direction ([Drive mechanics](#drive-mechanics-and-profiles)) |
+| `top_offset` | `0` | Raw units at the top end where the shaft turns but the rail does not move yet |
+| `bottom_offset` | `0` | The same at the bottom end |
+| `profile` | `""` | Build the drive from a [profile](#drive-mechanics-and-profiles); keys given for the drive override the profile's values |
 | `pos1`, `pos2` | `49152`, `58982` | Stored intermediate positions (0 = top, 65535 = bottom) |
 | `thermal_limit_s` | `240` | Accumulated run time until thermal protection trips |
 | `cooldown_s` | `900` | Time to cool down completely |
 | `start_position` | `0` | Position at start |
+
+## Drive mechanics and profiles
+
+By default every drive is ideal: the rail moves over exactly the drive's raw scale, and
+it starts moving the moment the shaft turns. Real drives need calibration, and three
+optional per-drive settings model why. All three are in **raw position units**, where
+65535 is the drive's full travel:
+
+| Setting | What happens |
+|---|---|
+| `top_offset`, `bottom_offset` | The end positions are set a bit beyond the physical travel. Over the first `top_offset` units below the top end, and the last `bottom_offset` units above the bottom end, the shaft turns but the rail does not move. |
+| `slack` | Gear backlash. After every change of direction the shaft turns `slack` units before anything (slats or rail) moves. A small angle step right after a reversal can disappear in it completely. After a downward run the rail is `slack` units behind the drive's count, so a full downward run stops short unless `bottom_offset` ≥ `slack`. |
+| `tilt_degrees` | Already per drive: the shaft turn the slat ladder takes (venetian). Drives on one line can differ. |
+
+How it is modelled: the drive counts its own shaft rotation. That count is what it
+reports, and what GOTO, POS1/POS2 and angle steps act on. The blind follows through a
+chain: gear (play `slack`), then the slat ladder (play `tilt_degrees`: slats turn first,
+then the rail moves), then the end offsets. The facade, the drive details and
+`GET /api/state` show the **physical** rail and slats (`position`, `percent`, `tilt`,
+`slat_percent`). The drive's own idea of its rail is `drive_position`, and the value it
+sends over SMI is `reported_position`. For an ideal drive all three are the same. To set
+the start state of a test, `set_position()` assumes the gear was last moved upwards.
+
+Profiles bundle typical values, so a line can mix drives that behave differently. Use
+`profile = "venetian-worn"` in a `[[bus.motor]]` entry (other keys override it),
+`MotorConfig.from_profile("venetian-worn")` in Python, `smisim run --kind mixed-mechanics`
+or the preset *16 drives with mixed mechanics*.
+
+| Profile | `kind` | `tilt_degrees` | `slack` | `top_offset` | `bottom_offset` | Source |
+|---|---|---|---|---|---|---|
+| `venetian-tight` | venetian | `180` | `150` | `300` | `300` | **Assumption**: a new, well-adjusted drive |
+| `venetian-worn` | venetian | `300` | `1500` | `1200` | `2500` | **Assumption**: an older drive with play and generous end positions |
+| `roller-offset` | roller | `270` | `400` | `1500` | `3000` | **Assumption**: a roller shutter whose end positions were set beyond the travel |
+
+No public figures for gear backlash or end-position overrun of blind drives were found, so
+every value above is an assumption. The effects themselves are reported publicly:
+installers describe angle pulses after a direction change that move the slats less than
+expected [9]; a motorised-blind patent describes slat ladders that are only
+friction-coupled to the drive shaft and slip at the end of the turn [10]; and installers
+report end positions that drift from the physical stops [11]. If you have measured values
+for a real drive, please open an issue.
 
 ## Where the default timing values come from
 
@@ -110,6 +155,9 @@ drive or per line to match the hardware you care about.
 | `thermal_limit_s` | `240` | Tubular blind motors are commonly rated for short-time duty **S2 4 min** (4 minutes of continuous running, then cool down), e.g. the Becker R12-17-E01 listing [4] and a 17 rpm 20 Nm tubular motor rated for "4 minutes operation time" [5]. The simulator simplifies this to 240 s of accumulated run time. |
 | `cooldown_s` | `900` | **Assumption.** S2 only says "until cooled down"; no public cooling time found. |
 | `response_delay_ms` | `8` | **Assumption.** No public figure for the SMI answer turnaround. |
+| `slack` | `0` | **Assumption**: an ideal drive, so nothing changes for existing setups. Real drives have some play (see [Drive mechanics](#drive-mechanics-and-profiles)). |
+| `top_offset` | `0` | **Assumption** (ideal drive, as above). |
+| `bottom_offset` | `0` | **Assumption** (ideal drive, as above). |
 | `slow` fault delay | `400 ms` | **Assumption**, chosen to be longer than the default timeout of the bundled master (250 ms). |
 
 Cross-check of the speeds: published drive speeds are about **17 rpm** for roller-shutter
@@ -130,3 +178,6 @@ Sources (found via web search, October 2026):
 6. elero VariEco S-K: <https://www.elero.com/en/products/electrical-drives/varieco-s-k>
 7. elero venetian blind motors: <https://www.elero.com/en/products/venetian-blind-motors>
 8. Dunkermotoren D370 SMI: <https://www.directindustry.com/prod/dunkermotoren-gmbh/product-14411-474601.html>
+9. KNX-User-Forum, "Probleme bei Lamellenverstellung Raff. und ABB JRA/S8.230.5.1": <https://knx-user-forum.de/forum/%C3%B6ffentlicher-bereich/knx-eib-forum/828414-probleme-bei-lamellenverstellung-raff-und-abb-jra-s8-230-5-1>
+10. US 7,923,948 B2, "Method for adjusting the residual light gap between slats of a motorized venetian blind": <https://patents.google.com/patent/US7923948>
+11. KNX-User-Forum, "Raffstore Endlage verstellt": <https://knx-user-forum.de/forum/%C3%B6ffentlicher-bereich/knx-eib-forum/knx-einsteiger/1755712-raffstore-endlage-verstellt>

@@ -47,8 +47,8 @@ new names) are not breaking.
 | `smisim.FrameResult` | named tuple `(reply: bytes, delay_s: float)`; `reply` is empty when no drive answers |
 | `smisim.BusSettings` | all fields and their meaning ([configuration.md](configuration.md)) |
 | `smisim.MotorConfig` | all fields and their meaning ([configuration.md](configuration.md)) |
-| `smisim.Motor` | read: `uid`, `cfg`, `address`, `key_id`, `position` (bottom-rail height, 0 = top, 65535 = bottom), `reported_position` (what the drive reports over SMI; differs from `position` only with `tilt_in_position`), `tilt` (0..1), `direction` (-1 up, 0, +1 down), `errors`, `faults`, `limits_set`, `slat_percent`, `slat_angle`, `angle_deg`; act: `set_fault(name, active)`, `clear_errors()`, `calibrate()`, `stop()`; test control: `target_position`, `move_to(position)`, `set_position(position, *, tilt=None)` |
-| `smisim.BlindKind`, `smisim.FAULTS` | values and keys |
+| `smisim.Motor` | read: `uid`, `cfg`, `address`, `key_id`, `position` (physical bottom-rail height, 0 = top, 65535 = bottom), `drive_position` (the rail as the drive counts it; differs from `position` only with slack or end offsets), `reported_position` (what the drive reports over SMI: `drive_position`, or the shaft count with `tilt_in_position`), `tilt` (physical slat turn, 0..1), `direction` (-1 up, 0, +1 down), `errors`, `faults`, `limits_set`, `slat_percent`, `slat_angle`, `angle_deg`; act: `set_fault(name, active)`, `clear_errors()`, `calibrate()`, `stop()`; test control: `target_position`, `move_to(position)`, `set_position(position, *, tilt=None)` |
+| `smisim.BlindKind`, `smisim.FAULTS`, `smisim.DRIVE_PROFILES` | values and keys; `MotorConfig.from_profile(name, **overrides)` |
 | `smisim.protocol` | `Addressing`, `AddrMode`, `MasterTelegram`, `Command`, `DiagCode`, `QueryCode`, `Response`, `decode_response`, `checksum`, `checksum_ok`, `expected_response_length`, `ACK`, `NACK` |
 
 Wire encodings marked *provisional* in [protocol.md](protocol.md) may still change when
@@ -64,9 +64,9 @@ instead of private fields:
 
 | Member | Meaning |
 |---|---|
-| `motor.target_position` | Read-only. Where the drive is heading (0 = top, 65535 = bottom), or its current `position` when it is not moving. For an angle step it is where the step ends. Slat turning does not change it. |
-| `motor.move_to(position)` | Starts a move without a telegram, like a GOTO (venetian slat turn and reversal pause included). It ignores whether end positions are set. Returns `False` and does nothing when the drive cannot move (offline, blocked, thermal protection). |
-| `motor.set_position(position, *, tilt=None)` | Stops the drive and puts it at `position` at once. `tilt` (0..1) also sets the slat turn of a venetian blind. |
+| `motor.target_position` | Read-only. Where the rail will physically end up (0 = top, 65535 = bottom), or its current `position` when the drive is not moving. For an angle step it is where the step ends; slack and end offsets are included. |
+| `motor.move_to(position)` | Starts a move to the physical `position` without a telegram, like a GOTO to the matching raw value (venetian slat turn, reversal pause and slack included). It ignores whether end positions are set. Returns `False` and does nothing when the drive cannot move (offline, blocked, thermal protection). |
+| `motor.set_position(position, *, tilt=None)` | Stops the drive and puts the rail physically at `position` at once. `tilt` (0..1) also sets the slat turn of a venetian blind. Any slack is taken up in the upward direction. |
 
 ```python
 drive = bus.motors[0]

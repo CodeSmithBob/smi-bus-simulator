@@ -26,6 +26,9 @@ protection and lose their end positions. You watch it all happen on a virtual fa
 * **Realistic drives.** Travel times, slower upward travel, venetian slat turning before
   travel, angle steps in 2° units, a reversal dead time, stored intermediate positions,
   thermal protection (S2 duty cycle), obstacle detection, end-position calibration.
+* **Drives that need calibration.** Optional per-drive gear slack and end-position offsets,
+  and profiles such as `venetian-tight` and `venetian-worn`, so a line can mix drives
+  whose count and physical position differ.
 * **Lift and tilt, seen separately.** Switch the facade to *Front + section*: each window
   shows the front view (how far the blind is down) next to a side section (the real slat
   angle, the roll diameter or the awning reach, and how much daylight reaches the room).

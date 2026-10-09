@@ -28,6 +28,9 @@ def check_time_scale(value: float) -> float:
 
 
 KIND_CYCLE = [BlindKind.VENETIAN, BlindKind.ROLLER, BlindKind.SCREEN, BlindKind.VENETIAN]
+#: --kind mixed-mechanics: drives that need calibration, next to an ideal venetian drive.
+MECHANICS_CYCLE = ["venetian-tight", "venetian-worn", "roller-offset", ""]
+KIND_CHOICES = ["mixed", "mixed-mechanics", *[k.value for k in BlindKind]]
 
 
 @dataclass
@@ -73,7 +76,12 @@ def load(path: str | Path) -> SimConfig:
             m = dict(m)
             if isinstance(m.get("key_id"), str):
                 m["key_id"] = int(m["key_id"], 16)
-            bus.motors.append(MotorConfig(**_pick(MotorConfig, m)))
+            m = _pick(MotorConfig, m)
+            profile = m.pop("profile", "")
+            if profile:  # the profile's values, overridden by keys given for this drive
+                bus.motors.append(MotorConfig.from_profile(profile, **m))
+            else:
+                bus.motors.append(MotorConfig(**m))
         cfg.buses.append(bus)
     return cfg
 
@@ -99,16 +107,21 @@ def generate(
         )
         bus = BusConfig(settings)
         for i in range(motors_per_bus):
-            k = KIND_CYCLE[i % len(KIND_CYCLE)] if kind == "mixed" else BlindKind(kind)
-            bus.motors.append(
-                MotorConfig(
-                    name=f"{ROOMS[i % len(ROOMS)]} {b + 1}.{i + 1:02d}",
-                    address=0 if factory_new else i % 16,
-                    manufacturer=manufacturer,
-                    kind=k,
-                    key_id=None,
-                )
-            )
+            common = {
+                "name": f"{ROOMS[i % len(ROOMS)]} {b + 1}.{i + 1:02d}",
+                "address": 0 if factory_new else i % 16,
+                "manufacturer": manufacturer,
+                "key_id": None,
+            }
+            if kind == "mixed-mechanics":
+                profile = MECHANICS_CYCLE[i % len(MECHANICS_CYCLE)]
+                if profile:
+                    bus.motors.append(MotorConfig.from_profile(profile, **common))
+                else:
+                    bus.motors.append(MotorConfig(kind=BlindKind.VENETIAN, **common))
+            else:
+                k = KIND_CYCLE[i % len(KIND_CYCLE)] if kind == "mixed" else BlindKind(kind)
+                bus.motors.append(MotorConfig(kind=k, **common))
             if not factory_new:
                 # Spread start positions a little so the facade looks lived-in.
                 bus.motors[-1].start_position = [0, 0, 0x4000, 0xFFFF][(i + b) % 4]

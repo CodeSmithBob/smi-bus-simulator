@@ -23,6 +23,12 @@ All notable changes, one section per release, newest first. Versions follow
   `smisim.__version__` and CHANGELOG agree, runs lint and tests, builds the sdist and
   wheel, and publishes a GitHub release with the changelog section as notes
   (`scripts/release_check.py`).
+* Optional drive mechanics, all off by default: `slack` (gear backlash after every
+  reversal), `top_offset` / `bottom_offset` (end positions beyond the physical travel),
+  per-drive `tilt_degrees`. Profiles `venetian-tight`, `venetian-worn` and `roller-offset`
+  (`profile = ...` in TOML, `MotorConfig.from_profile()`, `--kind mixed-mechanics`, preset
+  *mechanics-16*); their values are assumptions. New `Motor.drive_position` and
+  `drive_position` in the state; the facade and drive details show the physical blind.
 
 ### Changed
 

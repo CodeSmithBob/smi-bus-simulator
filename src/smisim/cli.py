@@ -10,7 +10,7 @@ import signal
 import sys
 
 from . import __version__
-from .config import SimConfig, check_time_scale, generate, load
+from .config import KIND_CHOICES, SimConfig, check_time_scale, generate, load
 from .protocol.frames import decode_any, parse_hex
 
 
@@ -22,7 +22,7 @@ def _run_parser(sub) -> None:
     p.add_argument(
         "--kind",
         default="mixed",
-        choices=["mixed", "roller", "venetian", "screen", "awning"],
+        choices=KIND_CHOICES,
         help="blind type of generated drives",
     )
     p.add_argument("--manufacturer", type=int, default=1, help="manufacturer code (1-15)")

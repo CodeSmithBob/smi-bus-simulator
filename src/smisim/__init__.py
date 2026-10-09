@@ -14,9 +14,10 @@ without the web server and without asyncio::
 __version__ = "0.2.0"
 
 from .bus import Bus, BusSettings, FrameResult  # noqa: E402
-from .motor import FAULTS, BlindKind, Motor, MotorConfig  # noqa: E402
+from .motor import DRIVE_PROFILES, FAULTS, BlindKind, Motor, MotorConfig  # noqa: E402
 
 __all__ = [
+    "DRIVE_PROFILES",
     "FAULTS",
     "BlindKind",
     "Bus",

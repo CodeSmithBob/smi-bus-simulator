@@ -80,6 +80,37 @@ def make_key_id(seed: object) -> int:
     return random.Random(str(seed)).randrange(0x00100000, 0xFFFFFFFF)
 
 
+#: Drive mechanics presets ("profiles"). All values are ASSUMPTIONS: no public figures for
+#: gear backlash or end-position overrun of blind drives were found (docs/configuration.md,
+#: "Drive mechanics"). Offsets and slack are in raw position units (65535 = full travel).
+DRIVE_PROFILES: dict[str, dict] = {
+    "venetian-tight": {
+        "kind": "venetian",
+        "tilt_degrees": 180.0,
+        "slack": 150,
+        "top_offset": 300,
+        "bottom_offset": 300,
+    },
+    "venetian-worn": {
+        "kind": "venetian",
+        "tilt_degrees": 300.0,
+        "slack": 1500,
+        "top_offset": 1200,
+        "bottom_offset": 2500,
+    },
+    "roller-offset": {
+        "kind": "roller",
+        "slack": 400,
+        "top_offset": 1500,
+        "bottom_offset": 3000,
+    },
+}
+
+#: Upper limits for the mechanics options (raw position units).
+MAX_SLACK = int(FULL) // 4
+MAX_OFFSETS = int(FULL) // 2
+
+
 @dataclass
 class MotorConfig:
     name: str = ""
@@ -102,6 +133,12 @@ class MotorConfig:
     # drive reports and accepts counts drive-shaft rotation including slat turning, so
     # angle steps move the position. Off = position is the height of the bottom rail.
     tilt_in_position: bool = False
+    # Drive mechanics (all 0 = ideal drive, the behaviour before these options existed).
+    # Raw position units (0..65535 = the drive's full travel):
+    top_offset: int = 0  # at the top end the shaft turns this far before the rail moves
+    bottom_offset: int = 0  # same at the bottom end
+    slack: int = 0  # gear backlash: dead zone after every change of direction
+    profile: str = ""  # name of the DRIVE_PROFILES entry this drive was built from (label)
     pos1: int = 0xC000  # stored intermediate position 1 (e.g. sun protection)
     pos2: int = 0xE666  # stored intermediate position 2 (e.g. privacy)
     thermal_limit_s: float = 240.0  # continuous run time until thermal protection (S2 4 min)
@@ -119,11 +156,32 @@ class MotorConfig:
             raise ValueError("address must be 0..15")
         if not 0 <= self.manufacturer <= 15:
             raise ValueError("manufacturer code must be 0..15")
+        if not 30 <= float(self.tilt_degrees) <= 720:
+            raise ValueError("tilt range must be 30..720 degrees")
+        check_mechanics(self.top_offset, self.bottom_offset, self.slack)
+        if self.profile and self.profile not in DRIVE_PROFILES:
+            raise ValueError(f"unknown drive profile {self.profile!r}")
+
+    @classmethod
+    def from_profile(cls, profile: str, **overrides) -> MotorConfig:
+        """A config from a DRIVE_PROFILES entry; keyword arguments override its values."""
+        if profile not in DRIVE_PROFILES:
+            raise ValueError(
+                f"unknown drive profile {profile!r}; known: {', '.join(DRIVE_PROFILES)}"
+            )
+        return cls(**(DRIVE_PROFILES[profile] | {"profile": profile} | overrides))
 
     def to_dict(self) -> dict:
         d = asdict(self)
         d["kind"] = self.kind.value
         return d
+
+
+def check_mechanics(top_offset: int, bottom_offset: int, slack: int) -> None:
+    if top_offset < 0 or bottom_offset < 0 or top_offset + bottom_offset > MAX_OFFSETS:
+        raise ValueError(f"offsets must be >= 0 and together at most {MAX_OFFSETS}")
+    if not 0 <= slack <= MAX_SLACK:
+        raise ValueError(f"slack must be 0..{MAX_SLACK}")
 
 
 @dataclass
@@ -133,9 +191,29 @@ class MotorReply:
 
 
 @dataclass
-class _Segment:
-    kind: str  # "tilt" or "travel"
-    goal: float
+class _Chain:
+    """Shaft-to-blind mechanics, all in shaft degrees.
+
+    ``sigma`` is the drive shaft as the drive counts it (0 = upper end, slats open). The
+    gear follows it with play ``slack``; the bottom rail follows the gear with play
+    ``tilt`` (the slat ladder: while the play is taken up, the slats turn). With
+    ``slack = 0`` and no offsets this is the ideal drive. ``drive_rail`` is the rail as
+    the drive itself models it (ladder play only, no slack).
+    """
+
+    sigma: float
+    gear: float
+    rail: float
+    drive_rail: float
+
+    def advance(self, sigma: float, tilt: float, slack: float, span: float) -> None:
+        """Move the shaft monotonically to ``sigma`` and let the mechanics follow."""
+        self.sigma = sigma
+        self.drive_rail = min(max(self.drive_rail, sigma - tilt), sigma, span)
+        self.drive_rail = max(self.drive_rail, 0.0)
+        self.gear = min(max(self.gear, sigma - slack), sigma)
+        self.rail = min(max(self.rail, self.gear - tilt), self.gear, span)
+        self.rail = max(self.rail, 0.0)
 
 
 @dataclass
@@ -155,9 +233,7 @@ class Motor:
         self.uid = uid
         if cfg.key_id is None:
             cfg.key_id = make_key_id(("motor", uid, cfg.name))
-        self.position = float(cfg.start_position)
-        self.tilt = 1.0 if cfg.start_position > 0 else 0.0  # 0 = turned up, 1 = closed down
-        self.direction = 0  # -1 up, +1 down
+        self.direction = 0  # -1 up, +1 down (drive shaft)
         self.heat_s = 0.0
         self.faults: set[str] = set()
         self.errors: set[str] = set()
@@ -165,11 +241,13 @@ class Motor:
         self.calibrating = False
         self.wink_s = 0.0
         self.stats = MotorStats()
-        self._plan: list[_Segment] = []
-        self._budget_deg: float | None = None
+        self._plan: list[float] = []  # shaft targets (degrees), in order
         self._was_moving = False
-        self._run_start = self.position
         self._pause_s = 0.0
+        self._chain = _Chain(0.0, 0.0, 0.0, 0.0)
+        start = _check_position(cfg.start_position)
+        self._place(start, 1.0 if start > 0 else 0.0)  # tilt: 0 = turned up, 1 = closed
+        self._run_start = self.position
 
     # --- identity --------------------------------------------------------------
 
@@ -186,77 +264,108 @@ class Motor:
             address=self.cfg.address, manufacturer=self.cfg.manufacturer, key_id=self.key_id
         )
 
-    # --- kinematics ------------------------------------------------------------
+    # --- geometry --------------------------------------------------------------
 
     @property
     def is_venetian(self) -> bool:
         return self.cfg.kind is BlindKind.VENETIAN
 
+    @property
+    def _span(self) -> float:
+        """Shaft degrees of rail travel between the drive's end positions."""
+        return float(self.cfg.shaft_degrees)
+
+    @property
+    def _tilt_span(self) -> float:
+        """Shaft degrees of the slat turn (0 for blinds without slats)."""
+        return float(self.cfg.tilt_degrees) if self.is_venetian else 0.0
+
+    @property
+    def _slack_deg(self) -> float:
+        return self.cfg.slack / FULL * self._span
+
+    @property
+    def _sigma_max(self) -> float:
+        return self._tilt_span + self._span
+
+    def _raw_to_physical(self, raw: float) -> float:
+        """Drive raw rail value -> physical rail position (offsets applied)."""
+        top, bottom = float(self.cfg.top_offset), float(self.cfg.bottom_offset)
+        travel = FULL - top - bottom
+        return min(max((raw - top) / travel, 0.0), 1.0) * FULL
+
+    def _physical_to_raw(self, position: float) -> float:
+        if position <= 0:
+            return 0.0
+        if position >= FULL:
+            return FULL
+        top, bottom = float(self.cfg.top_offset), float(self.cfg.bottom_offset)
+        return top + position / FULL * (FULL - top - bottom)
+
+    def _place(self, position: float, tilt: float) -> None:
+        """Put the blind at a physical position and slat turn (gear in upward contact)."""
+        rail = self._physical_to_raw(position) / FULL * self._span
+        sigma = rail + (tilt * self._tilt_span)
+        self._chain = _Chain(sigma, sigma, rail, rail)
+
+    def _advance(self, sigma: float) -> None:
+        self._chain.advance(sigma, self._tilt_span, self._slack_deg, self._span)
+
+    # --- kinematics ------------------------------------------------------------
+
     def _factor(self, direction: int) -> float:
         return self.cfg.up_speed_factor if direction < 0 else 1.0
 
-    def _pos_rate(self, direction: int) -> float:
-        return FULL / float(self.cfg.travel_time_s) * self._factor(direction)
-
     def _shaft_rate(self, direction: int) -> float:
-        return (
-            float(self.cfg.shaft_degrees) / float(self.cfg.travel_time_s) * self._factor(direction)
-        )
+        return self._span / float(self.cfg.travel_time_s) * self._factor(direction)
 
-    def _plan_move(self, goal_pos: float, final_tilt: float | None = None) -> None:
-        goal_pos = min(max(goal_pos, 0.0), FULL)
-        plan: list[_Segment] = []
-        direction = (goal_pos > self.position) - (goal_pos < self.position)
-        if self.is_venetian and direction:
-            plan.append(_Segment("tilt", 1.0 if direction > 0 else 0.0))
-        if direction:
-            plan.append(_Segment("travel", goal_pos))
-        if self.is_venetian and final_tilt is not None:
-            plan.append(_Segment("tilt", min(max(final_tilt, 0.0), 1.0)))
-        self._plan = plan
-        self._budget_deg = None
+    def _drive_tilt(self) -> float:
+        """Slat turn as the drive models it (0..1)."""
+        if not self.is_venetian:
+            return 0.0
+        c = self._chain
+        return min(max((c.sigma - c.drive_rail) / self._tilt_span, 0.0), 1.0)
+
+    def _go(self, targets: list[float]) -> None:
+        """Run the shaft through ``targets`` (degrees), clipped to the end positions."""
+        self._plan = [min(max(t, 0.0), self._sigma_max) for t in targets]
         self._start_if_needed()
+
+    def _plan_rail(self, raw: float, final_tilt: float | None = None) -> None:
+        """GOTO a raw rail value the way the drive does it: slats first, then the rail."""
+        c = self._chain
+        goal = min(max(raw, 0.0), FULL) / FULL * self._span
+        targets: list[float] = []
+        rail_after = c.drive_rail
+        if goal > c.drive_rail + 1e-9:  # down: close the slats, then lower the rail
+            targets.append(goal + self._tilt_span)
+            rail_after = goal
+        elif goal < c.drive_rail - 1e-9:  # up: open the slats, then raise the rail
+            targets.append(goal)
+            rail_after = goal
+        if final_tilt is not None and self.is_venetian:
+            targets.append(rail_after + min(max(final_tilt, 0.0), 1.0) * self._tilt_span)
+        self._go(targets)
 
     def _plan_reported(self, target: float, final_tilt: float | None = None) -> None:
         """Plan a move to a position on the scale the drive reports over SMI."""
         if not self.counts_tilt_in_position:
-            self._plan_move(target, final_tilt)
+            self._plan_rail(target, final_tilt)
             return
         # The target is a shaft angle measured from the top end with open slats.
-        t_deg, s_deg = float(self.cfg.tilt_degrees), float(self.cfg.shaft_degrees)
-        goal = min(max(target, 0.0), FULL) / FULL * (t_deg + s_deg)
-        delta = goal - (self.tilt * t_deg + self.position / FULL * s_deg)
-        plan: list[_Segment] = []
-        if delta > 1e-9:  # downwards: close the slats, then lower the rail
-            room = (1.0 - self.tilt) * t_deg
-            if delta <= room:
-                plan.append(_Segment("tilt", self.tilt + delta / t_deg))
-            else:
-                plan.append(_Segment("tilt", 1.0))
-                rail = self.position + (delta - room) / s_deg * FULL
-                plan.append(_Segment("travel", min(rail, FULL)))
-        elif delta < -1e-9:  # upwards: open the slats, then raise the rail
-            room = self.tilt * t_deg
-            if -delta <= room:
-                plan.append(_Segment("tilt", self.tilt + delta / t_deg))
-            else:
-                plan.append(_Segment("tilt", 0.0))
-                rail = self.position - (-delta - room) / s_deg * FULL
-                plan.append(_Segment("travel", max(rail, 0.0)))
+        c = self._chain
+        sigma = min(max(target, 0.0), FULL) / FULL * self._sigma_max
+        targets = [sigma]
         if final_tilt is not None:
-            plan.append(_Segment("tilt", min(max(final_tilt, 0.0), 1.0)))
-        self._plan = plan
-        self._budget_deg = None
-        self._start_if_needed()
+            if sigma > c.sigma:
+                rail_after = max(c.drive_rail, sigma - self._tilt_span)
+            else:
+                rail_after = min(c.drive_rail, sigma)
+            targets.append(rail_after + min(max(final_tilt, 0.0), 1.0) * self._tilt_span)
+        self._go(targets)
 
     def _plan_steps(self, direction: int, degrees: float) -> None:
-        plan: list[_Segment] = []
-        if self.is_venetian:
-            plan.append(_Segment("tilt", 1.0 if direction > 0 else 0.0))
-        plan.append(_Segment("travel", FULL if direction > 0 else 0.0))
-        self._plan = plan
-        self._budget_deg = float(degrees)
-        self._start_if_needed()
+        self._go([self._chain.sigma + direction * degrees])
 
     def _start_if_needed(self) -> None:
         self._run_start = self.position
@@ -269,15 +378,14 @@ class Motor:
             self.stats.runs += 1
 
     def _plan_direction(self) -> int:
-        for seg in self._plan:
-            current = self.tilt if seg.kind == "tilt" else self.position
-            if abs(seg.goal - current) > 1e-9:
-                return 1 if seg.goal > current else -1
+        sigma = self._chain.sigma
+        for target in self._plan:
+            if abs(target - sigma) > 1e-9:
+                return 1 if target > sigma else -1
         return 0
 
     def stop(self) -> None:
         self._plan = []
-        self._budget_deg = None
         self._pause_s = 0.0
         self.direction = 0
 
@@ -285,60 +393,44 @@ class Motor:
 
     @property
     def target_position(self) -> float:
-        """Position (0 = top, 65535 = bottom) the drive is heading for.
+        """Physical position (0 = top, 65535 = bottom) the drive is heading for.
 
         Equals :attr:`position` when the drive is not moving. For an angle step it is
-        where the step ends. Slat turning of venetian blinds does not change it, and an
+        where the step ends. It includes the effects of slack and end offsets, but an
         obstacle or thermal trip on the way is not predicted.
         """
-        pos, tilt, budget = self.position, self.tilt, self._budget_deg
-        for seg in self._plan:
-            if seg.kind == "tilt":
-                need = abs(seg.goal - tilt) * self.cfg.tilt_degrees
-                if budget is not None:
-                    if budget <= need:
-                        break
-                    budget -= need
-                tilt = seg.goal
-                continue
-            distance = abs(seg.goal - pos)
-            if budget is not None:
-                reach = budget / float(self.cfg.shaft_degrees) * FULL
-                if reach < distance:
-                    pos += reach if seg.goal > pos else -reach
-                    break
-                budget -= distance / FULL * float(self.cfg.shaft_degrees)
-            pos = seg.goal
-        return pos
+        chain = _Chain(**asdict(self._chain))
+        for target in self._plan:
+            chain.advance(target, self._tilt_span, self._slack_deg, self._span)
+        return self._raw_to_physical(chain.rail / self._span * FULL)
 
     def move_to(self, position: float) -> bool:
-        """Start a move to ``position`` without a telegram (out-of-band test action).
+        """Start a move to the physical ``position`` without a telegram (test action).
 
-        Behaves like a GOTO telegram, including the slat turn of venetian blinds and the
-        reversal pause, but ignores whether end positions are set. Returns ``False`` and
-        does nothing when the drive cannot move (offline, blocked, thermal protection).
+        Behaves like a GOTO telegram to the matching raw value, including the slat turn of
+        venetian blinds, the reversal pause and any slack, but ignores whether end
+        positions are set. Returns ``False`` and does nothing when the drive cannot move
+        (offline, blocked, thermal protection).
         """
         position = _check_position(position)
         if "offline" in self.faults or not self._can_move():
             return False
         self.errors.discard("obstacle")
-        self._plan_move(position)
+        self._plan_rail(self._physical_to_raw(position))
         return True
 
     def set_position(self, position: float, *, tilt: float | None = None) -> None:
-        """Stop the drive and put it at ``position`` at once (test setup).
+        """Stop the drive and put it at the physical ``position`` at once (test setup).
 
         ``tilt`` (0..1, venetian blinds) sets the slat turn as well; by default the slats
-        keep their current turn.
+        keep their current turn. Any gear slack is taken up in the upward direction.
         """
         position = _check_position(position)
         if tilt is not None and not 0.0 <= tilt <= 1.0:
             raise ValueError("tilt must be 0..1")
         self.stop()
-        self.position = position
-        if tilt is not None:
-            self.tilt = float(tilt)
-        self._run_start = position
+        self._place(position, self.tilt if tilt is None else float(tilt))
+        self._run_start = self.position
 
     def update(self, dt: float) -> None:
         self.wink_s = max(0.0, self.wink_s - dt)
@@ -362,11 +454,7 @@ class Motor:
             remaining -= paused
             self.direction = 0
         while remaining > 1e-9 and self._plan:
-            seg = self._plan[0]
-            if seg.kind == "tilt":
-                remaining = self._run_tilt(seg, remaining)
-            else:
-                remaining = self._run_travel(seg, remaining)
+            remaining = self._run(remaining)
         moved = dt - remaining - paused
         self.heat_s += moved
         self.stats.run_time_s += moved
@@ -381,61 +469,47 @@ class Motor:
                 self.errors.discard("limits")
                 self.faults.discard("limits_lost")
 
-    def _run_tilt(self, seg: _Segment, remaining: float) -> float:
-        delta = seg.goal - self.tilt
+    def _run(self, remaining: float) -> float:
+        """Turn the shaft toward the next target for up to ``remaining`` seconds."""
+        target = self._plan[0]
+        sigma = self._chain.sigma
+        delta = target - sigma
         if abs(delta) < 1e-9:
             self._plan.pop(0)
             return remaining
         direction = 1 if delta > 0 else -1
         self.direction = direction
-        rate = self._shaft_rate(direction) / self.cfg.tilt_degrees  # tilt units per second
+        rate = self._shaft_rate(direction)
         step = min(abs(delta), rate * remaining)
-        if self._budget_deg is not None:
-            step = min(step, self._budget_deg / self.cfg.tilt_degrees)
-        self.tilt += direction * step
-        used = step / rate if rate else remaining
-        if self._budget_deg is not None:
-            self._budget_deg -= step * self.cfg.tilt_degrees
-            if self._budget_deg <= 1e-6:
-                self.stop()
-                return remaining - used
-        if abs(seg.goal - self.tilt) < 1e-9:
-            self.tilt = seg.goal
+        new_sigma = sigma + direction * step
+        if direction > 0 and "obstacle" in self.faults and self._obstacle(new_sigma):
+            return remaining - step / rate
+        self._advance(new_sigma)
+        if abs(target - new_sigma) < 1e-9:
             self._plan.pop(0)
-        return remaining - used
+        return remaining - step / rate
 
-    def _run_travel(self, seg: _Segment, remaining: float) -> float:
-        delta = seg.goal - self.position
-        if abs(delta) < 1e-6:
-            self.position = seg.goal
-            self._plan.pop(0)
-            return remaining
-        direction = 1 if delta > 0 else -1
-        self.direction = direction
-        rate = self._pos_rate(direction)
-        step = min(abs(delta), rate * remaining)
-        if self._budget_deg is not None:
-            step = min(step, self._budget_deg / float(self.cfg.shaft_degrees) * FULL)
-        new_pos = self.position + direction * step
-        if direction > 0 and "obstacle" in self.faults:
-            trip_at = min(self._run_start + 0.35 * FULL, FULL - 1.0)
-            if self.position < trip_at <= new_pos:
-                step = trip_at - self.position
-                self.position = trip_at
-                self.faults.discard("obstacle")
-                self._trip("obstacle")
-                return remaining - (step / rate if rate else remaining)
-        self.position = new_pos
-        used = step / rate if rate else remaining
-        if self._budget_deg is not None:
-            self._budget_deg -= step / FULL * float(self.cfg.shaft_degrees)
-            if self._budget_deg <= 1e-6:
-                self.stop()
-                return remaining - used
-        if abs(seg.goal - self.position) < 1e-6:
-            self.position = seg.goal
-            self._plan.pop(0)
-        return remaining - used
+    def _obstacle(self, new_sigma: float) -> bool:
+        """Stop where the rail meets the obstacle, if it does before ``new_sigma``."""
+        trip_at = min(self._run_start + 0.35 * FULL, FULL - 1.0)
+        args = (self._tilt_span, self._slack_deg, self._span)
+        probe = _Chain(**asdict(self._chain))
+        probe.advance(new_sigma, *args)
+        if not self.position < trip_at <= self._raw_to_physical(probe.rail / self._span * FULL):
+            return False
+        lo, hi = self._chain.sigma, new_sigma
+        for _ in range(40):  # bisect the shaft angle where the rail reaches the obstacle
+            mid = (lo + hi) / 2
+            probe = _Chain(**asdict(self._chain))
+            probe.advance(mid, *args)
+            if self._raw_to_physical(probe.rail / self._span * FULL) < trip_at:
+                lo = mid
+            else:
+                hi = mid
+        self._advance(hi)
+        self.faults.discard("obstacle")
+        self._trip("obstacle")
+        return True
 
     def _trip(self, error: str) -> None:
         self.errors.add(error)
@@ -473,19 +547,7 @@ class Motor:
         self.faults.discard("blocked")
         self.errors -= {"blocked", "obstacle"}
         self.calibrating = True
-        plan: list[_Segment] = []
-        if self.is_venetian:
-            plan += [_Segment("tilt", 0.0)]
-        plan += [_Segment("travel", 0.0)]
-        if self.is_venetian:
-            plan += [_Segment("tilt", 1.0)]
-        plan += [_Segment("travel", FULL)]
-        if self.is_venetian:
-            plan += [_Segment("tilt", 0.0)]
-        plan += [_Segment("travel", 0.0)]
-        self._plan = plan
-        self._budget_deg = None
-        self._start_if_needed()
+        self._go([0.0, self._sigma_max, 0.0])
 
     def wink(self, seconds: float = 3.0) -> None:
         self.wink_s = seconds
@@ -548,7 +610,7 @@ class Motor:
             if tel.byte is not None:
                 self._plan_steps(direction, tel.byte * ANGLE_UNIT_DEG)
             else:
-                self._plan_move(0.0 if direction < 0 else FULL)
+                self._go([0.0 if direction < 0 else self._sigma_max])
             return True
         if not self.limits_set:
             return False
@@ -567,9 +629,8 @@ class Motor:
             return True
         if final_tilt is not None:
             if self.is_venetian:
-                self._plan = [_Segment("tilt", min(max(final_tilt, 0.0), 1.0))]
-                self._budget_deg = None
-                self._start_if_needed()
+                tilt = min(max(final_tilt, 0.0), 1.0)
+                self._go([self._chain.drive_rail + tilt * self._tilt_span])
             return True
         return False
 
@@ -620,7 +681,8 @@ class Motor:
         elif code == QueryCode.KEY_ID:
             value = self.key_id
         elif code == QueryCode.ANGLE:
-            value = min(0xFF, round(self.angle_deg / ANGLE_UNIT_DEG))
+            drive_angle = self._drive_tilt() * self._tilt_span  # the drive's own count
+            value = min(0xFF, round(drive_angle / ANGLE_UNIT_DEG))
         elif code == QueryCode.STATUS_BITS:
             value = self.status_bits
         else:
@@ -630,9 +692,31 @@ class Motor:
     # --- state -----------------------------------------------------------------
 
     @property
+    def position(self) -> float:
+        """Physical height of the bottom rail: 0 = top, 65535 = bottom (what you see)."""
+        return self._raw_to_physical(self._chain.rail / self._span * FULL)
+
+    @property
+    def tilt(self) -> float:
+        """Physical slat turn: 0 = turned up/open, 1 = closed (0 for blinds without slats)."""
+        if not self.is_venetian:
+            return 0.0
+        c = self._chain
+        return min(max((c.gear - c.rail) / self._tilt_span, 0.0), 1.0)
+
+    @property
+    def drive_position(self) -> float:
+        """The bottom rail as the drive itself counts it, raw 0..65535.
+
+        Equals :attr:`position` for an ideal drive. With slack or end offsets the drive's
+        count and the physical blind differ, as on a drive that needs calibration.
+        """
+        return self._chain.drive_rail / self._span * FULL
+
+    @property
     def angle_deg(self) -> float:
-        """Slat turning progress in motor-shaft degrees (the unit of SMI angle data)."""
-        return self.tilt * self.cfg.tilt_degrees if self.is_venetian else 0.0
+        """Physical slat turn in motor-shaft degrees (the unit of SMI angle data)."""
+        return self.tilt * self._tilt_span
 
     @property
     def counts_tilt_in_position(self) -> bool:
@@ -642,15 +726,14 @@ class Motor:
     def reported_position(self) -> float:
         """The position this drive reports over SMI (0 = top, 65535 = bottom).
 
-        Equals :attr:`position` (height of the bottom rail) unless the venetian option
-        ``tilt_in_position`` is on; then it is the drive-shaft rotation from the top end
-        with open slats (0) to the bottom end with closed slats (65535).
+        Equals :attr:`drive_position` (the bottom rail as the drive counts it) unless the
+        venetian option ``tilt_in_position`` is on; then it is the drive-shaft rotation from
+        the top end with open slats (0) to the bottom end with closed slats (65535). For an
+        ideal drive (no slack, no offsets) ``drive_position`` equals :attr:`position`.
         """
         if not self.counts_tilt_in_position:
-            return self.position
-        t_deg, s_deg = float(self.cfg.tilt_degrees), float(self.cfg.shaft_degrees)
-        shaft = self.tilt * t_deg + self.position / FULL * s_deg
-        return shaft / (t_deg + s_deg) * FULL
+            return self.drive_position
+        return self._chain.sigma / self._sigma_max * FULL
 
     @property
     def slat_percent(self) -> float:
@@ -693,9 +776,9 @@ class Motor:
             bits |= STATUS_BIT_BLOCKED
         if not self.limits_set:
             bits |= STATUS_BIT_LIMITS_NOT_SET
-        if self.position <= 0:
+        if self.drive_position <= 0:
             bits |= STATUS_BIT_AT_TOP
-        if self.position >= FULL:
+        if self.drive_position >= FULL:
             bits |= STATUS_BIT_AT_BOTTOM
         return bits
 
@@ -711,6 +794,7 @@ class Motor:
             "position": round(self.position),
             "percent": round(self.position / FULL * 100, 1),
             "reported_position": round(self.reported_position),
+            "drive_position": round(self.drive_position),
             "tilt": round(self.tilt, 4),
             "angle_deg": round(self.angle_deg, 1),
             "slat_percent": round(self.slat_percent, 1),
@@ -744,11 +828,16 @@ class MotorUpdate:
     slat_max_deg: float | None = None
     reversal_pause_s: float | None = None
     tilt_in_position: bool | None = None
+    top_offset: int | None = None
+    bottom_offset: int | None = None
+    slack: int | None = None
     pos1: int | None = None
     pos2: int | None = None
 
     def apply(self, motor: Motor) -> None:
         cfg = motor.cfg
+        position, tilt = motor.position, motor.tilt
+        geometry = (cfg.kind, cfg.tilt_degrees, cfg.top_offset, cfg.bottom_offset, cfg.slack)
         if self.name is not None:
             cfg.name = str(self.name)[:40]
         if self.address is not None:
@@ -765,8 +854,6 @@ class MotorUpdate:
             cfg.key_id = int(self.key_id)
         if self.kind is not None:
             cfg.kind = BlindKind(self.kind)
-            if cfg.kind is not BlindKind.VENETIAN:
-                motor.tilt = 0.0
         if self.travel_time_s is not None:
             if not 2 <= float(self.travel_time_s) <= 600:
                 raise ValueError("travel time must be 2..600 s")
@@ -791,3 +878,13 @@ class MotorUpdate:
             cfg.pos1 = max(0, min(0xFFFF, int(self.pos1)))
         if self.pos2 is not None:
             cfg.pos2 = max(0, min(0xFFFF, int(self.pos2)))
+        if any(v is not None for v in (self.top_offset, self.bottom_offset, self.slack)):
+            top = cfg.top_offset if self.top_offset is None else int(self.top_offset)
+            bottom = cfg.bottom_offset if self.bottom_offset is None else int(self.bottom_offset)
+            slack = cfg.slack if self.slack is None else int(self.slack)
+            check_mechanics(top, bottom, slack)
+            cfg.top_offset, cfg.bottom_offset, cfg.slack = top, bottom, slack
+        new_geometry = (cfg.kind, cfg.tilt_degrees, cfg.top_offset, cfg.bottom_offset, cfg.slack)
+        if new_geometry != geometry:
+            # The mechanics changed: rebuild the shaft state around the blind as it is now.
+            motor.set_position(position, tilt=tilt if motor.is_venetian else 0.0)

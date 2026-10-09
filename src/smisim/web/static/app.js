@@ -236,7 +236,7 @@
     return `
       <div class="d-head">
         <h3>${esc(m.name || "Drive " + m.uid)}</h3>
-        <span class="muted">Line ${bus.index + 1} · ${m.kind}</span>
+        <span class="muted">Line ${bus.index + 1} · ${m.kind}${c.profile ? ` · ${esc(c.profile)}` : ""}</span>
       </div>
       <dl class="ident">
         <div><dt>Slave address</dt><dd>${m.address}</dd></div>
@@ -300,6 +300,11 @@
           <label>Reversal pause (s) <input type="number" name="reversal_pause_s" min="0" max="5" step="0.05" value="${c.reversal_pause_s}"></label>
         </div>
         ${m.kind === "venetian" ? `<label class="check" title="Provisional: see the Protocol tab"><input type="checkbox" name="tilt_in_position" ${c.tilt_in_position ? "checked" : ""}> Slat turning counts in the position (shaft rotation)</label>` : ""}
+        <div class="row" title="Drive mechanics in raw position units (65535 = full travel). 0 = ideal drive.">
+          <label>Slack (raw) <input type="number" name="slack" min="0" max="16383" value="${c.slack}"></label>
+          <label>Top offset (raw) <input type="number" name="top_offset" min="0" max="32767" value="${c.top_offset}"></label>
+          <label>Bottom offset (raw) <input type="number" name="bottom_offset" min="0" max="32767" value="${c.bottom_offset}"></label>
+        </div>
         <div class="row">
           <label>Pos 1 (%) <input type="number" name="pos1" min="0" max="100" step="0.1" value="${(c.pos1 / 655.35).toFixed(1)}"></label>
           <label>Pos 2 (%) <input type="number" name="pos2" min="0" max="100" step="0.1" value="${(c.pos2 / 655.35).toFixed(1)}"></label>
@@ -317,7 +322,7 @@
     const faults = m.faults.map((e) => `<span class="chip warn">${esc(e)}</span>`).join("");
     return `
       <div class="gauges">
-        <div class="gauge"><span>Position</span><b>${m.percent.toFixed(1)} %</b><small title="Value the drive reports over SMI">SMI ${m.reported_position}</small></div>
+        <div class="gauge"><span>Position (rail)</span><b>${m.percent.toFixed(1)} %</b><small title="Value the drive reports over SMI">SMI ${m.reported_position}</small>${m.drive_position !== m.position ? `<small title="The rail as the drive counts it (slack / end offsets)">drive counts ${(m.drive_position / 655.35).toFixed(1)} %</small>` : ""}</div>
         ${m.kind === "venetian" ? `<div class="gauge"><span>Slats</span><b>${Math.round(m.slat_percent)} %</b><small>${m.slat_angle > 0 ? "+" : ""}${Math.round(m.slat_angle)}° · shaft ${Math.round(m.angle_deg)}°</small></div>` : ""}
         <div class="gauge"><span>Daylight in room</span><b>${Math.round(m.daylight * 100)} %</b><i class="bar day"><i style="width:${m.daylight * 100}%"></i></i></div>
         <div class="gauge"><span>State</span><b class="${m.direction ? "accent" : ""}">${dir}</b><small>${m.calibrating ? "calibrating" : m.limits_set ? "limits set" : "limits NOT set"}</small></div>
@@ -385,6 +390,8 @@
         slat_min_deg: Number(f.get("slat_min_deg")), slat_max_deg: Number(f.get("slat_max_deg")),
         reversal_pause_s: Number(f.get("reversal_pause_s")),
         tilt_in_position: f.get("tilt_in_position") === "on",
+        slack: Number(f.get("slack")), top_offset: Number(f.get("top_offset")),
+        bottom_offset: Number(f.get("bottom_offset")),
         pos1: Math.round(Number(f.get("pos1")) * 655.35), pos2: Math.round(Number(f.get("pos2")) * 655.35),
       };
       run(async () => { await api("PATCH", `/api/motors/${m.uid}`, body); app.driveSig = ""; toast("Saved"); });
