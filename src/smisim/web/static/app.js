@@ -299,6 +299,7 @@
           <label>Slat angle at 100 % (°) <input type="number" name="slat_max_deg" min="-90" max="90" value="${c.slat_max_deg}"></label>
           <label>Reversal pause (s) <input type="number" name="reversal_pause_s" min="0" max="5" step="0.05" value="${c.reversal_pause_s}"></label>
         </div>
+        ${m.kind === "venetian" ? `<label class="check" title="Provisional: see the Protocol tab"><input type="checkbox" name="tilt_in_position" ${c.tilt_in_position ? "checked" : ""}> Slat turning counts in the position (shaft rotation)</label>` : ""}
         <div class="row">
           <label>Pos 1 (%) <input type="number" name="pos1" min="0" max="100" step="0.1" value="${(c.pos1 / 655.35).toFixed(1)}"></label>
           <label>Pos 2 (%) <input type="number" name="pos2" min="0" max="100" step="0.1" value="${(c.pos2 / 655.35).toFixed(1)}"></label>
@@ -316,7 +317,7 @@
     const faults = m.faults.map((e) => `<span class="chip warn">${esc(e)}</span>`).join("");
     return `
       <div class="gauges">
-        <div class="gauge"><span>Position</span><b>${m.percent.toFixed(1)} %</b><small>${m.position}</small></div>
+        <div class="gauge"><span>Position</span><b>${m.percent.toFixed(1)} %</b><small title="Value the drive reports over SMI">SMI ${m.reported_position}</small></div>
         ${m.kind === "venetian" ? `<div class="gauge"><span>Slats</span><b>${Math.round(m.slat_percent)} %</b><small>${m.slat_angle > 0 ? "+" : ""}${Math.round(m.slat_angle)}° · shaft ${Math.round(m.angle_deg)}°</small></div>` : ""}
         <div class="gauge"><span>Daylight in room</span><b>${Math.round(m.daylight * 100)} %</b><i class="bar day"><i style="width:${m.daylight * 100}%"></i></i></div>
         <div class="gauge"><span>State</span><b class="${m.direction ? "accent" : ""}">${dir}</b><small>${m.calibrating ? "calibrating" : m.limits_set ? "limits set" : "limits NOT set"}</small></div>
@@ -383,6 +384,7 @@
         travel_time_s: Number(f.get("travel_time_s")), tilt_degrees: Number(f.get("tilt_degrees")),
         slat_min_deg: Number(f.get("slat_min_deg")), slat_max_deg: Number(f.get("slat_max_deg")),
         reversal_pause_s: Number(f.get("reversal_pause_s")),
+        tilt_in_position: f.get("tilt_in_position") === "on",
         pos1: Math.round(Number(f.get("pos1")) * 655.35), pos2: Math.round(Number(f.get("pos2")) * 655.35),
       };
       run(async () => { await api("PATCH", `/api/motors/${m.uid}`, body); app.driveSig = ""; toast("Saved"); });

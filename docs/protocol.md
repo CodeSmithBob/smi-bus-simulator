@@ -136,6 +136,31 @@ Data bytes follow in the order option, word, byte.
 | `09` slat angle (2° units) | 1 byte | provisional |
 | `0A` status bits (see `STATUS_BIT_*` in `constants.py`) | 2 bytes | provisional |
 
+### 2.7 Position scale of venetian drives (optional, provisional)
+
+By default the position is the height of the bottom rail: 0 = upper end, 65535 = lower end
+(verified, Beckhoff `FB_SMIPosRead`). Slat turning does not change it, and angle steps at a
+fixed height leave it alone.
+
+With the drive option `tilt_in_position = true` (off by default), a venetian drive counts
+**drive-shaft rotation** instead. The position then runs from the upper end with open slats
+(0) to the lower end with closed slats (65535), over `tilt_degrees + shaft_degrees` of
+shaft rotation:
+
+```
+position = (tilt × tilt_degrees + rail / 65535 × shaft_degrees) / (tilt_degrees + shaft_degrees) × 65535
+```
+
+Angle steps then move the reported position. GOTO, POS1 and POS2 targets are read on the
+same scale: a target inside the remaining slat range only turns the slats.
+
+Status: **provisional**. The SMI standard does not define slat turning; it only has
+"turn the motor shaft by X°" commands. A KNX-User-Forum discussion says a controller can
+alternatively reach slat angles with absolute SMI positions, if it knows how many position
+units one full slat turn takes ("Verständnisfragen zum Raffstore Motor", page 2, see
+sources). That suggests real drives count slat turning in the position, but no vendor
+document or bus capture confirms the exact scale, so the option is off by default.
+
 ## 3. Answers from drives
 
 | Answer | Bytes | Status |
@@ -195,6 +220,8 @@ Pull requests are welcome. Add new codes in `constants.py` with a status and a s
   <https://smiwiki.thefischer.net/doku.php?id=wiki:smi:selbstbint>
 * mikrocontroller.net thread "Gibt es irgendwo brauchbare Infos zu SMI?":
   <https://www.mikrocontroller.net/topic/273846>
+* KNX-User-Forum, "Verständnisfragen zum Raffstore Motor (SMI-Aktor?; Eigenleistung?)", page 2:
+  <https://knx-user-forum.de/forum/%C3%B6ffentlicher-bereich/knx-eib-forum/knx-einsteiger/1313587-verst%C3%A4ndnisfragen-zum-raffstore-motor-smi-aktor-eigenleistung/page2>
 * `ingof/smi-server`, Linux server for the SMI bus: <https://github.com/ingof/smi-server>
   (the simulator re-implements the observed formats; no code was copied)
 * Vestamatic IF SMI RS-485, a gateway with its own serial protocol (not the SMI wire format):

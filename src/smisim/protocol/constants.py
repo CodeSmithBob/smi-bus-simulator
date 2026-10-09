@@ -184,6 +184,11 @@ SPEC_STATUS: dict[str, tuple[str, str]] = {
     "key_id_compare": (PROVISIONAL, "Semantics from Beckhoff FB_SMISlaveIdCompare"),
     "write_address": (PROVISIONAL, "Semantics from Beckhoff FB_SMISlaveAddrWrite"),
     "identify": (PROVISIONAL, "Simulator convenience for commissioning"),
+    "tilt_in_position": (
+        PROVISIONAL,
+        "Optional venetian mode (off by default): position counts slat turning as shaft "
+        "rotation. KNX-User-Forum: slat angles can be reached via absolute SMI positions",
+    ),
     "wired_and": (OBSERVED, "Bus idles ~21 V, drives pull it low: smiwiki hardware page"),
 }
 

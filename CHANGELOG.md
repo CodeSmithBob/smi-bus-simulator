@@ -11,6 +11,9 @@
   `reply, delay`), `source` defaults to `"api"`, and `Bus()` can be built from settings alone.
 * Test control on `Motor`: read-only `target_position`, `move_to(position)` (start a move
   without a telegram) and `set_position(position, *, tilt=None)` (stop and place the drive).
+* Venetian option `tilt_in_position` (off by default, provisional): the reported position
+  counts slat turning as drive-shaft rotation, so angle steps move it. New read-only
+  `Motor.reported_position`; the Drive tab shows the value reported over SMI.
 
 ## 0.2.0 (2026-10-09)
 

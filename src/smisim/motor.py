@@ -93,6 +93,10 @@ class MotorConfig:
     slat_min_deg: float = 0.0
     slat_max_deg: float = 85.0
     reversal_pause_s: float = 0.3  # dead time when the direction is reversed while running
+    # Venetian only, PROVISIONAL (see SPEC_STATUS "tilt_in_position"): the position the
+    # drive reports and accepts counts drive-shaft rotation including slat turning, so
+    # angle steps move the position. Off = position is the height of the bottom rail.
+    tilt_in_position: bool = False
     pos1: int = 0xC000  # stored intermediate position 1 (e.g. sun protection)
     pos2: int = 0xE666  # stored intermediate position 2 (e.g. privacy)
     thermal_limit_s: float = 240.0  # continuous run time until thermal protection (S2 4 min)
@@ -203,6 +207,38 @@ class Motor:
         if direction:
             plan.append(_Segment("travel", goal_pos))
         if self.is_venetian and final_tilt is not None:
+            plan.append(_Segment("tilt", min(max(final_tilt, 0.0), 1.0)))
+        self._plan = plan
+        self._budget_deg = None
+        self._start_if_needed()
+
+    def _plan_reported(self, target: float, final_tilt: float | None = None) -> None:
+        """Plan a move to a position on the scale the drive reports over SMI."""
+        if not self.counts_tilt_in_position:
+            self._plan_move(target, final_tilt)
+            return
+        # The target is a shaft angle measured from the top end with open slats.
+        t_deg, s_deg = float(self.cfg.tilt_degrees), float(self.cfg.shaft_degrees)
+        goal = min(max(target, 0.0), FULL) / FULL * (t_deg + s_deg)
+        delta = goal - (self.tilt * t_deg + self.position / FULL * s_deg)
+        plan: list[_Segment] = []
+        if delta > 1e-9:  # downwards: close the slats, then lower the rail
+            room = (1.0 - self.tilt) * t_deg
+            if delta <= room:
+                plan.append(_Segment("tilt", self.tilt + delta / t_deg))
+            else:
+                plan.append(_Segment("tilt", 1.0))
+                rail = self.position + (delta - room) / s_deg * FULL
+                plan.append(_Segment("travel", min(rail, FULL)))
+        elif delta < -1e-9:  # upwards: open the slats, then raise the rail
+            room = self.tilt * t_deg
+            if -delta <= room:
+                plan.append(_Segment("tilt", self.tilt + delta / t_deg))
+            else:
+                plan.append(_Segment("tilt", 0.0))
+                rail = self.position - (-delta - room) / s_deg * FULL
+                plan.append(_Segment("travel", max(rail, 0.0)))
+        if final_tilt is not None:
             plan.append(_Segment("tilt", min(max(final_tilt, 0.0), 1.0)))
         self._plan = plan
         self._budget_deg = None
@@ -515,14 +551,14 @@ class Motor:
         if tel.byte is not None:
             final_tilt = tel.byte * ANGLE_UNIT_DEG / self.cfg.tilt_degrees
         if code == Command.POS1:
-            self._plan_move(self.cfg.pos1, final_tilt)
+            self._plan_reported(self.cfg.pos1, final_tilt)
             return True
         if code == Command.POS2:
-            self._plan_move(self.cfg.pos2, final_tilt)
+            self._plan_reported(self.cfg.pos2, final_tilt)
             return True
         # GOTO
         if tel.word is not None:
-            self._plan_move(tel.word, final_tilt)
+            self._plan_reported(tel.word, final_tilt)
             return True
         if final_tilt is not None:
             if self.is_venetian:
@@ -567,7 +603,7 @@ class Motor:
     def _query(self, tel: MasterTelegram) -> bytes | None:
         code = tel.code
         if code == QueryCode.POSITION:
-            value = round(self.position)
+            value = round(self.reported_position)
         elif code == QueryCode.POS1:
             value = self.cfg.pos1
         elif code == QueryCode.POS2:
@@ -592,6 +628,24 @@ class Motor:
     def angle_deg(self) -> float:
         """Slat turning progress in motor-shaft degrees (the unit of SMI angle data)."""
         return self.tilt * self.cfg.tilt_degrees if self.is_venetian else 0.0
+
+    @property
+    def counts_tilt_in_position(self) -> bool:
+        return self.is_venetian and bool(self.cfg.tilt_in_position)
+
+    @property
+    def reported_position(self) -> float:
+        """The position this drive reports over SMI (0 = top, 65535 = bottom).
+
+        Equals :attr:`position` (height of the bottom rail) unless the venetian option
+        ``tilt_in_position`` is on; then it is the drive-shaft rotation from the top end
+        with open slats (0) to the bottom end with closed slats (65535).
+        """
+        if not self.counts_tilt_in_position:
+            return self.position
+        t_deg, s_deg = float(self.cfg.tilt_degrees), float(self.cfg.shaft_degrees)
+        shaft = self.tilt * t_deg + self.position / FULL * s_deg
+        return shaft / (t_deg + s_deg) * FULL
 
     @property
     def slat_percent(self) -> float:
@@ -651,6 +705,7 @@ class Motor:
             "drive_type": self.cfg.drive_type,
             "position": round(self.position),
             "percent": round(self.position / FULL * 100, 1),
+            "reported_position": round(self.reported_position),
             "tilt": round(self.tilt, 4),
             "angle_deg": round(self.angle_deg, 1),
             "slat_percent": round(self.slat_percent, 1),
@@ -683,6 +738,7 @@ class MotorUpdate:
     slat_min_deg: float | None = None
     slat_max_deg: float | None = None
     reversal_pause_s: float | None = None
+    tilt_in_position: bool | None = None
     pos1: int | None = None
     pos2: int | None = None
 
@@ -724,6 +780,8 @@ class MotorUpdate:
             if not 0 <= float(self.reversal_pause_s) <= 5:
                 raise ValueError("reversal pause must be 0..5 s")
             cfg.reversal_pause_s = float(self.reversal_pause_s)
+        if self.tilt_in_position is not None:
+            cfg.tilt_in_position = bool(self.tilt_in_position)
         if self.pos1 is not None:
             cfg.pos1 = max(0, min(0xFFFF, int(self.pos1)))
         if self.pos2 is not None:

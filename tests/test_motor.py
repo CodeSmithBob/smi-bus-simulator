@@ -1,3 +1,5 @@
+import pytest
+
 from smisim.motor import FULL, BlindKind, Motor, MotorConfig
 from smisim.protocol import ACK, NACK, Addressing, Command, DiagCode, MasterTelegram, QueryCode
 
@@ -145,3 +147,71 @@ def test_slat_percent_and_physical_angle():
     assert abs(m.slat_percent - 134 / 270 * 100) < 0.5
     assert abs(m.slat_angle) < 1.5  # about horizontal
     assert m.daylight > 0.8
+
+
+def _venetian(tilt_in_position: bool, **kw) -> Motor:
+    return Motor(MotorConfig(kind=BlindKind.VENETIAN, tilt_in_position=tilt_in_position, **kw), 1)
+
+
+def _reported(m: Motor) -> int:
+    data = m.handle(MasterTelegram.query(Addressing.to_slave(0), QueryCode.POSITION)).data
+    return int.from_bytes(data[2:4], "big")
+
+
+def test_tilt_in_position_is_off_by_default():
+    m = _venetian(False, start_position=0xFFFF)
+    assert MotorConfig().tilt_in_position is False
+    cmd(m, Command.UP, angle_deg=90)  # at the bottom: slats turn, rail stays
+    run(m, 2)
+    assert m.tilt < 1 and _reported(m) == 0xFFFF == round(m.reported_position)
+
+
+def test_tilt_in_position_counts_slat_turning():
+    m = _venetian(True)  # top end, slats open: shaft angle 0
+    total = m.cfg.tilt_degrees + m.cfg.shaft_degrees  # 270 + 9000
+    assert _reported(m) == 0
+    cmd(m, Command.DOWN, angle_deg=90)  # only turns the slats
+    run(m, 2)
+    assert m.position == 0 and m.tilt == pytest.approx(90 / 270)
+    assert _reported(m) == round(90 / total * 0xFFFF)
+    cmd(m, Command.DOWN)  # full run: bottom rail down, slats closed
+    run(m, 60)
+    assert _reported(m) == 0xFFFF
+
+
+def test_tilt_in_position_goto_uses_the_shaft_scale():
+    m = _venetian(True, start_position=0xFFFF)  # bottom, slats closed
+    total = m.cfg.tilt_degrees + m.cfg.shaft_degrees
+    # 100 shaft degrees up: inside the 270 degree slat range, so only the slats turn.
+    target = round((total - 100) / total * 0xFFFF)
+    cmd(m, Command.GOTO, position=target)
+    run(m, 3)
+    assert m.position == 0xFFFF and abs(_reported(m) - target) <= 1
+    assert abs(m.angle_deg - 170) < 0.5
+    # A target beyond the slat range opens the slats fully, then raises the rail.
+    target = round(0.5 * 0xFFFF)
+    cmd(m, Command.GOTO, position=target)
+    run(m, 40)
+    assert m.tilt == 0 and m.position < 0xFFFF and abs(_reported(m) - target) <= 1
+    # Stored positions are on the same scale.
+    cmd(m, Command.POS1, position=0x2000)
+    cmd(m, Command.POS1)
+    run(m, 40)
+    assert abs(_reported(m) - 0x2000) <= 1
+
+
+def test_tilt_in_position_has_no_effect_on_other_kinds():
+    m = Motor(MotorConfig(kind=BlindKind.ROLLER, tilt_in_position=True, travel_time_s=4), 1)
+    cmd(m, Command.GOTO, position=0x8000)
+    run(m, 5)
+    assert m.position == 0x8000 and _reported(m) == 0x8000
+
+
+def test_tilt_in_position_is_marked_provisional_and_editable():
+    from smisim.motor import MotorUpdate
+    from smisim.protocol.constants import PROVISIONAL, SPEC_STATUS
+
+    assert SPEC_STATUS["tilt_in_position"][0] == PROVISIONAL
+    m = _venetian(False)
+    MotorUpdate(tilt_in_position=True).apply(m)
+    assert m.cfg.tilt_in_position and m.counts_tilt_in_position

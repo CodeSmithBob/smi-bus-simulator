@@ -47,7 +47,7 @@ new names) are not breaking.
 | `smisim.FrameResult` | named tuple `(reply: bytes, delay_s: float)`; `reply` is empty when no drive answers |
 | `smisim.BusSettings` | all fields and their meaning ([configuration.md](configuration.md)) |
 | `smisim.MotorConfig` | all fields and their meaning ([configuration.md](configuration.md)) |
-| `smisim.Motor` | read: `uid`, `cfg`, `address`, `key_id`, `position` (0 = top, 65535 = bottom), `tilt` (0..1), `direction` (-1 up, 0, +1 down), `errors`, `faults`, `limits_set`, `slat_percent`, `slat_angle`, `angle_deg`; act: `set_fault(name, active)`, `clear_errors()`, `calibrate()`, `stop()`; test control: `target_position`, `move_to(position)`, `set_position(position, *, tilt=None)` |
+| `smisim.Motor` | read: `uid`, `cfg`, `address`, `key_id`, `position` (bottom-rail height, 0 = top, 65535 = bottom), `reported_position` (what the drive reports over SMI; differs from `position` only with `tilt_in_position`), `tilt` (0..1), `direction` (-1 up, 0, +1 down), `errors`, `faults`, `limits_set`, `slat_percent`, `slat_angle`, `angle_deg`; act: `set_fault(name, active)`, `clear_errors()`, `calibrate()`, `stop()`; test control: `target_position`, `move_to(position)`, `set_position(position, *, tilt=None)` |
 | `smisim.BlindKind`, `smisim.FAULTS` | values and keys |
 | `smisim.protocol` | `Addressing`, `AddrMode`, `MasterTelegram`, `Command`, `DiagCode`, `QueryCode`, `Response`, `decode_response`, `checksum`, `checksum_ok`, `expected_response_length`, `ACK`, `NACK` |
 

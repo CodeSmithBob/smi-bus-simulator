@@ -56,6 +56,7 @@ For a fixed building, use a TOML file: `smisim run --config building.toml`.
 | `slat_min_deg` | `0` | Physical slat angle at 0 % slat position (0 = horizontal, + = outer edge down) |
 | `slat_max_deg` | `85` | Physical slat angle at 100 % (closed). Use `-80` / `80` for 180° blinds. |
 | `reversal_pause_s` | `0.3` | Dead time when the direction is reversed while running |
+| `tilt_in_position` | `false` | Venetian only, **provisional**: the reported position counts slat turning as drive-shaft rotation, so angle steps move it ([protocol.md §2.7](protocol.md#27-position-scale-of-venetian-drives-optional-provisional)) |
 | `pos1`, `pos2` | `49152`, `58982` | Stored intermediate positions (0 = top, 65535 = bottom) |
 | `thermal_limit_s` | `240` | Accumulated run time until thermal protection trips |
 | `cooldown_s` | `900` | Time to cool down completely |
