@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "smi-bus-simulator"
-version = "0.2.0"
+version = "0.3.0"
 description = "Open-source simulator for SMI (Standard Motor Interface) sunblind and roller-shutter drives, with a live web visualization."
 readme = "README.md"
 license = "Apache-2.0"

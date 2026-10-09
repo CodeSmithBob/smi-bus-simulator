@@ -7,6 +7,11 @@ All notable changes, one section per release, newest first. Versions follow
 
 ## Unreleased
 
+## 0.3.0 (2026-10-09)
+
+First release on PyPI (`pip install smi-bus-simulator`). From this version on, the
+Python in-process API in docs/api.md follows semantic versioning.
+
 ### Added
 
 * Stable in-process Python API: `smisim.Bus`, `BusSettings`, `FrameResult`, `Motor`,
