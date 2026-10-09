@@ -1,0 +1,23 @@
+# docker compose up -> http://localhost:8080 , SMI lines on tcp://localhost:4000 and 4001
+services:
+  smisim:
+    build: .
+    image: smi-bus-simulator:latest
+    command: ["run", "--config", "/config/building.toml"]
+    ports:
+      - "8080:8080"
+      - "4000-4001:4000-4001"
+    volumes:
+      - ./examples/two-floors.toml:/config/building.toml:ro
+    restart: unless-stopped
+
+  # Optional: attach line 1 to a physical USB-serial adapter or SMI transceiver.
+  # Uncomment, adjust the device and run `docker compose --profile hardware up`.
+  # smisim-hw:
+  #   profiles: ["hardware"]
+  #   build: .
+  #   command: ["run", "--motors", "16", "--serial", "/dev/ttyUSB0"]
+  #   devices:
+  #     - "/dev/ttyUSB0:/dev/ttyUSB0"
+  #   ports:
+  #     - "8081:8080"

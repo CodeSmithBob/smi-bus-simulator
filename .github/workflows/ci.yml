@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+      - name: Test
+        run: pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t smi-bus-simulator:ci .
+      - name: Smoke test
+        run: |
+          docker run -d --name smisim -p 8080:8080 -p 4000:4000 smi-bus-simulator:ci run --motors 4
+          for i in $(seq 1 30); do curl -sf localhost:8080/api/meta >/dev/null && break; sleep 1; done
+          curl -sf localhost:8080/api/state | python -c "import json,sys; s=json.load(sys.stdin); assert len(s['buses'][0]['motors']) == 4"
+          python - <<'PY'
+          import socket
+          s = socket.create_connection(("localhost", 4000), timeout=3)
+          s.sendall(bytes.fromhex("5001AF"))  # slave 0 UP
+          assert s.recv(1) == b"\xff", "expected ACK"
+          print("telegram over TCP: ACK")
+          PY
+          docker logs smisim
+          docker rm -f smisim

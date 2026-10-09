@@ -1,0 +1,72 @@
+# Two SMI lines (32 drives) for a small office building.
+# Every key is optional; see docs/configuration.md for all of them.
+
+[simulator]
+http_port = 8080
+tcp_base_port = 4000      # line 1 -> 4000, line 2 -> 4001
+tick_hz = 20
+time_scale = 1.0          # set to 10 to watch long runs quickly
+
+[[bus]]
+name = "Ground floor - south"
+variant = "SMI"           # 230 V AC drives ("SMI LoVo" for 24 V DC drives)
+response_delay_ms = 8
+echo = false              # true if your controller expects its own bytes back
+realtime = true           # pace answers at 2400 baud
+# pty_link = "/tmp/smi0"  # also expose a virtual serial port (Linux/macOS)
+# serial_port = "/dev/ttyUSB0"
+
+  [[bus.motor]]
+  name = "Reception 1"
+  address = 0
+  kind = "venetian"
+  manufacturer = 1
+  key_id = "1A2B3C01"
+  travel_time_s = 48
+  tilt_degrees = 270
+
+  [[bus.motor]]
+  name = "Reception 2"
+  address = 1
+  kind = "venetian"
+  key_id = "1A2B3C02"
+
+  [[bus.motor]]
+  name = "Meeting room"
+  address = 2
+  kind = "screen"
+  travel_time_s = 36
+
+  [[bus.motor]]
+  name = "Kitchen"
+  address = 3
+  kind = "roller"
+  travel_time_s = 22
+  pos1 = 49152            # 75 %: stored sun-protection position
+
+  [[bus.motor]]
+  name = "Terrace awning"
+  address = 4
+  kind = "awning"
+  travel_time_s = 30
+
+[[bus]]
+name = "First floor - factory new"
+# All drives on address 0, as delivered. Commission them with the
+# Discover button in the Master tab or `smisim send --tcp localhost:4001 discover`.
+
+  [[bus.motor]]
+  name = "Office A"
+  kind = "venetian"
+
+  [[bus.motor]]
+  name = "Office B"
+  kind = "venetian"
+
+  [[bus.motor]]
+  name = "Office C"
+  kind = "venetian"
+
+  [[bus.motor]]
+  name = "Office D"
+  kind = "roller"

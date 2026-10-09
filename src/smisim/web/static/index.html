@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SMI Bus Simulator</title>
+  <meta name="description" content="Virtual SMI sunblind and roller-shutter drives with live visualization">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="3" y="3" width="26" height="26" rx="5" class="logo-frame"/>
+        <g class="logo-slats">
+          <rect x="7" y="8" width="18" height="3" rx="1"/>
+          <rect x="7" y="13" width="18" height="3" rx="1"/>
+          <rect x="7" y="18" width="18" height="3" rx="1"/>
+        </g>
+        <rect x="7" y="23" width="18" height="2" rx="1" class="logo-rail"/>
+      </svg>
+      <div>
+        <h1>SMI Bus Simulator</h1>
+        <p class="tagline">Virtual Standard Motor Interface drives</p>
+      </div>
+    </div>
+    <div class="top-controls">
+      <label class="compact">Preset
+        <select id="preset">
+          <option value="">Load…</option>
+        </select>
+      </label>
+      <label class="compact">View
+        <select id="view-mode">
+          <option value="front">Front</option>
+          <option value="both">Front + section</option>
+        </select>
+      </label>
+      <label class="compact">Speed
+        <select id="time-scale">
+          <option value="1">1×</option>
+          <option value="2">2×</option>
+          <option value="5">5×</option>
+          <option value="10">10×</option>
+          <option value="25">25×</option>
+        </select>
+      </label>
+      <button id="theme" class="ghost icon" title="Toggle light/dark theme" aria-label="Toggle theme"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5a6.5 6.5 0 0 1 0 13z" fill="currentColor"/></svg></button>
+      <span id="conn" class="pill pill-wait" role="status">connecting</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="building" aria-label="Building facade">
+      <div id="lines"></div>
+      <div class="line-actions">
+        <button id="add-line" class="ghost">+ Add SMI line</button>
+        <button id="remove-line" class="ghost">− Remove last line</button>
+      </div>
+    </section>
+
+    <aside class="panel" aria-label="Controls">
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="drive" class="active">Drive</button>
+        <button role="tab" data-tab="master">Master</button>
+        <button role="tab" data-tab="lab">Test lab</button>
+        <button role="tab" data-tab="spec">Protocol</button>
+      </nav>
+
+      <div class="tab-body" id="tab-drive" role="tabpanel">
+        <div id="drive-empty" class="empty">
+          <p>Click a window to inspect a drive.</p>
+          <p class="muted">Each window is one virtual SMI drive. Commands you send here go over the
+            simulated bus as real SMI telegrams, so they show up in the bus monitor.</p>
+        </div>
+        <div id="drive" hidden></div>
+      </div>
+
+      <div class="tab-body" id="tab-master" role="tabpanel" hidden>
+        <form id="master-form" class="stack" autocomplete="off">
+          <div class="row">
+            <label>Line <select name="bus" id="m-bus"></select></label>
+            <label>Addressing
+              <select name="mode" id="m-mode">
+                <option value="slave">Single drive (slave address)</option>
+                <option value="group">Group (address mask)</option>
+                <option value="broadcast">Broadcast (all)</option>
+                <option value="manufacturer">All of one manufacturer</option>
+                <option value="key_id">Slave ID / key ID</option>
+              </select>
+            </label>
+          </div>
+          <div class="row" data-show="slave">
+            <label>Slave address <input type="number" name="address" min="0" max="15" value="0"></label>
+          </div>
+          <div class="row" data-show="group">
+            <fieldset class="mask"><legend>Group members</legend><div id="m-mask"></div></fieldset>
+          </div>
+          <div class="row" data-show="group manufacturer key_id">
+            <label>Manufacturer code <input type="number" name="manufacturer" min="0" max="15" value="0"></label>
+          </div>
+          <div class="row" data-show="key_id">
+            <label>Key ID (hex) <input name="key_id" value="00000000" pattern="[0-9A-Fa-f]{1,8}"></label>
+          </div>
+          <div class="row">
+            <label>Telegram
+              <select name="type" id="m-type">
+                <option value="command">Drive command</option>
+                <option value="query">Query (read)</option>
+                <option value="diag">Diagnosis</option>
+              </select>
+            </label>
+            <label>Code <select name="code" id="m-code"></select></label>
+          </div>
+          <div class="row" data-field="position">
+            <label class="grow">Position <output id="m-pos-out">50 %</output>
+              <input type="range" name="position_pct" min="0" max="100" step="0.5" value="50">
+            </label>
+          </div>
+          <div class="row" data-field="angle">
+            <label>Angle (°) <input type="number" name="angle_deg" min="0" max="510" step="2" placeholder="none"></label>
+          </div>
+          <div class="row" data-field="search">
+            <label>Search key ID (hex) <input name="search" value="80000000"></label>
+          </div>
+          <div class="row" data-field="new_address">
+            <label>New address <input type="number" name="new_address" min="0" max="15" value="1"></label>
+          </div>
+          <div class="preview"><span class="muted">Telegram</span> <code id="m-preview">…</code></div>
+          <div class="row">
+            <button type="submit" class="primary">Send telegram</button>
+          </div>
+        </form>
+        <div id="m-result" class="result" hidden></div>
+        <hr>
+        <form id="raw-form" class="stack">
+          <label>Raw bytes (hex, checksum included)
+            <input name="hex" placeholder="5C 01 A3" spellcheck="false">
+          </label>
+          <button type="submit">Send raw</button>
+        </form>
+        <hr>
+        <div class="stack">
+          <h3>Commissioning</h3>
+          <p class="muted">Factory-new drives all sit on address 0. The reference discovery searches
+            slave IDs with the compare telegram and gives each drive its own address. Every step is a
+            real telegram, so you can follow it in the monitor.</p>
+          <button id="discover">Discover &amp; address drives on this line</button>
+        </div>
+      </div>
+
+      <div class="tab-body" id="tab-lab" role="tabpanel" hidden>
+        <p class="muted">Connect your controller to a line, start a session and let it work.
+          The lab watches the telegrams, injects faults when you arm a check and scores the
+          behaviour. This is an unofficial pre-check, not an SMI e.V. certification.</p>
+        <div class="row">
+          <button id="lab-start" class="primary">Start session</button>
+          <button id="lab-stop">Stop</button>
+          <a id="lab-report" class="button ghost" href="/api/testlab/report" download>Report (JSON)</a>
+        </div>
+        <label class="check"><input type="checkbox" id="lab-ui" checked> Count telegrams from this web UI too</label>
+        <ul id="lab-checks" class="checks"></ul>
+      </div>
+
+      <div class="tab-body" id="tab-spec" role="tabpanel" hidden>
+        <p class="muted">The official SMI specification is only available to members of
+          SMI Standard Motor Interface e.V. This simulator is built from public sources. Each part
+          of the protocol carries a status, and the monitor marks telegrams that rely on
+          provisional encodings.</p>
+        <div class="legend">
+          <span class="badge verified">verified</span> vendor documentation
+          <span class="badge observed">observed</span> bus captures / working code
+          <span class="badge provisional">provisional</span> simulator assumption
+        </div>
+        <table class="spec"><tbody id="spec-rows"></tbody></table>
+        <p class="muted small">Found a mistake and have a source? Please open a
+          "protocol correction" issue on GitHub.</p>
+      </div>
+    </aside>
+  </main>
+
+  <section class="monitor" aria-label="Bus monitor">
+    <div class="monitor-head">
+      <h2>Bus monitor</h2>
+      <div class="monitor-tools">
+        <input id="mon-filter" type="search" placeholder="Filter (text or hex)" aria-label="Filter">
+        <select id="mon-line" aria-label="Line filter"><option value="">All lines</option></select>
+        <label class="check"><input type="checkbox" id="mon-errors"> Errors only</label>
+        <label class="check"><input type="checkbox" id="mon-pause"> Pause</label>
+        <button id="mon-clear" class="ghost">Clear</button>
+        <button id="mon-export" class="ghost">Export CSV</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="traffic">
+        <thead><tr><th>Time</th><th>Line</th><th></th><th>Source</th><th>Bytes</th><th>Decoded</th></tr></thead>
+        <tbody id="mon-rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <span>Open source (Apache-2.0). Not affiliated with SMI Standard Motor Interface e.V. "SMI" is used
+      descriptively.</span>
+    <span id="footer-stats" class="muted"></span>
+  </footer>
+
+  <div id="toast" class="toast" role="alert" hidden></div>
+  <script src="/static/facade.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

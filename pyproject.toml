@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smi-bus-simulator"
+version = "0.2.0"
+description = "Open-source simulator for SMI (Standard Motor Interface) sunblind and roller-shutter drives, with a live web visualization."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+authors = [{ name = "CodeSmithBob" }]
+keywords = ["smi", "standard motor interface", "sunblind", "roller shutter", "venetian blind", "building automation", "simulator"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Framework :: AsyncIO",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Topic :: Home Automation",
+  "Topic :: System :: Emulators",
+]
+dependencies = [
+  "aiohttp>=3.9",
+  "pyserial>=3.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.4"]
+
+[project.scripts]
+smisim = "smisim.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/codesmithbob/smi-bus-simulator"
+Issues = "https://github.com/codesmithbob/smi-bus-simulator/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+smisim = ["web/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
