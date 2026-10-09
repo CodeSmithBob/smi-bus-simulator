@@ -244,6 +244,8 @@ class Motor:
         self._plan: list[float] = []  # shaft targets (degrees), in order
         self._was_moving = False
         self._pause_s = 0.0
+        self._moving_rail = False
+        self._moving_slats = False
         self._chain = _Chain(0.0, 0.0, 0.0, 0.0)
         start = _check_position(cfg.start_position)
         self._place(start, 1.0 if start > 0 else 0.0)  # tilt: 0 = turned up, 1 = closed
@@ -388,6 +390,7 @@ class Motor:
         self._plan = []
         self._pause_s = 0.0
         self.direction = 0
+        self._moving_rail = self._moving_slats = False
 
     # --- test control (public, stable; see docs/api.md) ------------------------
 
@@ -440,12 +443,14 @@ class Motor:
             self._trip("thermal")
         if not self._plan:
             self.direction = 0
+            self._moving_rail = self._moving_slats = False
             self._cool(dt)
             self._was_moving = False
             return
         if "blocked" in self.faults:
             self._trip("blocked")
             return
+        rail_before, slats_before = self.position, self.tilt  # physical, offsets applied
         remaining = dt
         paused = 0.0
         if self._pause_s > 0:
@@ -456,6 +461,9 @@ class Motor:
         while remaining > 1e-9 and self._plan:
             remaining = self._run(remaining)
         moved = dt - remaining - paused
+        # What a person watching would see during this step (not the motor running).
+        self._moving_rail = abs(self.position - rail_before) > 1e-6
+        self._moving_slats = abs(self.tilt - slats_before) > 1e-9
         self.heat_s += moved
         self.stats.run_time_s += moved
         self._was_moving = True
@@ -705,6 +713,20 @@ class Motor:
         return min(max((c.gear - c.rail) / self._tilt_span, 0.0), 1.0)
 
     @property
+    def moving_rail(self) -> bool:
+        """True while the bottom rail physically moves (during the last ``update``).
+
+        False during the reversal pause, while gear slack is taken up, while only the
+        slats turn and while the rail stays at an end inside an end offset.
+        """
+        return self._moving_rail
+
+    @property
+    def moving_slats(self) -> bool:
+        """True while the slats of a venetian blind physically turn (last ``update``)."""
+        return self._moving_slats
+
+    @property
     def drive_position(self) -> float:
         """The bottom rail as the drive itself counts it, raw 0..65535.
 
@@ -801,6 +823,8 @@ class Motor:
             "slat_angle": round(self.slat_angle, 1),
             "daylight": round(self.daylight, 3),
             "reversing": self._pause_s > 0,
+            "moving_rail": self._moving_rail,
+            "moving_slats": self._moving_slats,
             "direction": self.direction,
             "errors": sorted(self.errors),
             "faults": sorted(self.faults),

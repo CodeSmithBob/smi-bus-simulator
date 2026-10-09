@@ -57,6 +57,24 @@ that KNX, Home Assistant and Shelly users describe for real external venetian bl
 
 Use *View → Front + section* to watch both movements at once.
 
+## Ground truth for automated tests
+
+`GET /api/state` (and `Motor` in the Python API) tells a test what a person watching the
+facade would see, separate from what the drive reports:
+
+| Field | Meaning |
+|---|---|
+| `position`, `percent`, `tilt`, `slat_percent` | Where the rail and the slats physically are |
+| `moving_rail`, `moving_slats` | `true` while the rail / the slats physically move |
+| `direction` | The motor is running (-1 up, +1 down), even if nothing visible moves yet |
+| `drive_position`, `reported_position` | What the drive counts and what it sends over SMI |
+
+`moving_rail` stays `false` during the reversal pause, while gear slack is taken up,
+while only the slats turn, and while the rail sits at an end inside an end offset. Use it
+to measure when a blind really starts to move after a telegram, or to check that a
+controller's calibration made the physical and reported positions agree. The state is
+refreshed at `tick_hz` (20 per second by default), so the flags have that resolution.
+
 ## Calibration and end positions
 
 Drives can lose their end positions (fault **limits_lost**). Such a drive refuses

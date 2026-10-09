@@ -47,7 +47,7 @@ new names) are not breaking.
 | `smisim.FrameResult` | named tuple `(reply: bytes, delay_s: float)`; `reply` is empty when no drive answers |
 | `smisim.BusSettings` | all fields and their meaning ([configuration.md](configuration.md)) |
 | `smisim.MotorConfig` | all fields and their meaning ([configuration.md](configuration.md)) |
-| `smisim.Motor` | read: `uid`, `cfg`, `address`, `key_id`, `position` (physical bottom-rail height, 0 = top, 65535 = bottom), `drive_position` (the rail as the drive counts it; differs from `position` only with slack or end offsets), `reported_position` (what the drive reports over SMI: `drive_position`, or the shaft count with `tilt_in_position`), `tilt` (physical slat turn, 0..1), `direction` (-1 up, 0, +1 down), `errors`, `faults`, `limits_set`, `slat_percent`, `slat_angle`, `angle_deg`; act: `set_fault(name, active)`, `clear_errors()`, `calibrate()`, `stop()`; test control: `target_position`, `move_to(position)`, `set_position(position, *, tilt=None)` |
+| `smisim.Motor` | read: `uid`, `cfg`, `address`, `key_id`, `position` (physical bottom-rail height, 0 = top, 65535 = bottom), `drive_position` (the rail as the drive counts it; differs from `position` only with slack or end offsets), `reported_position` (what the drive reports over SMI: `drive_position`, or the shaft count with `tilt_in_position`), `tilt` (physical slat turn, 0..1), `moving_rail`, `moving_slats` (the rail / slats physically moved in the last `update()`), `direction` (-1 up, 0, +1 down), `errors`, `faults`, `limits_set`, `slat_percent`, `slat_angle`, `angle_deg`; act: `set_fault(name, active)`, `clear_errors()`, `calibrate()`, `stop()`; test control: `target_position`, `move_to(position)`, `set_position(position, *, tilt=None)` |
 | `smisim.BlindKind`, `smisim.FAULTS`, `smisim.DRIVE_PROFILES` | values and keys; `MotorConfig.from_profile(name, **overrides)` |
 | `smisim.protocol` | `Addressing`, `AddrMode`, `MasterTelegram`, `Command`, `DiagCode`, `QueryCode`, `Response`, `decode_response`, `checksum`, `checksum_ok`, `expected_response_length`, `ACK`, `NACK` |
 
@@ -93,7 +93,7 @@ All endpoints accept and return JSON. Errors return `{"error": "..."}` with stat
 
 | Method | Path | Body / query | Purpose |
 |---|---|---|---|
-| GET | `/api/state` | | Full state: lines, drives, statistics, test lab |
+| GET | `/api/state` | | Full state: lines, drives, statistics, test lab. Per drive: `position` / `tilt` (physical), `drive_position`, `reported_position`, `moving_rail`, `moving_slats` (true while the rail / slats physically move), `direction` (the motor runs) |
 | GET | `/api/meta` | | Fault list, presets, protocol status table |
 | GET | `/api/traffic?since=SEQ` | | Bus monitor entries newer than `SEQ`. Position answers carry `raw_position` and, when one drive answered, `rail_percent` / `slat_percent` (where that drive physically was) |
 | GET | `/api/traffic.csv?since=SEQ` | | The same entries as CSV, with `raw_position`, `rail_percent` and `slat_percent` in their own columns (the *Export CSV* button) |

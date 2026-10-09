@@ -29,6 +29,9 @@ All notable changes, one section per release, newest first. Versions follow
   (`profile = ...` in TOML, `MotorConfig.from_profile()`, `--kind mixed-mechanics`, preset
   *mechanics-16*); their values are assumptions. New `Motor.drive_position` and
   `drive_position` in the state; the facade and drive details show the physical blind.
+* `moving_rail` and `moving_slats` per drive in `GET /api/state` and on `Motor`: true while
+  the rail / the slats physically move (not while the motor only takes up slack or pauses
+  before reversing), so automated tests can see when a blind really starts to move.
 
 ### Changed
 
