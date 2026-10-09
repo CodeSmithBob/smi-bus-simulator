@@ -53,8 +53,13 @@ FAULTS: dict[str, str] = {
     "limits_lost": "End positions are lost; positioning is refused until calibrated.",
 }
 
+#: Extra answer delay of the "slow" fault (assumption, see docs/configuration.md).
+SLOW_FAULT_DELAY_S = 0.4
+
 ONE_SHOT_FAULTS = {"drop_next", "corrupt_next", "overheat"}
 
+# Sources / assumptions for every default timing value: docs/configuration.md,
+# "Where the default timing values come from" (tests/test_defaults_doc.py keeps it in sync).
 KIND_DEFAULTS: dict[BlindKind, dict] = {
     BlindKind.ROLLER: {"travel_time_s": 24.0, "shaft_degrees": 5400.0},
     BlindKind.VENETIAN: {"travel_time_s": 48.0, "shaft_degrees": 9000.0},
@@ -507,7 +512,7 @@ class Motor:
             self.faults.discard("corrupt_next")
             data = data[:-1] + bytes([data[-1] ^ 0x5A]) if len(data) > 1 else bytes([0x5A])
         self.stats.answers += 1
-        return MotorReply(data, 0.4 if "slow" in self.faults else 0.0)
+        return MotorReply(data, SLOW_FAULT_DELAY_S if "slow" in self.faults else 0.0)
 
     def _can_move(self) -> bool:
         return "thermal" not in self.errors and "blocked" not in self.faults

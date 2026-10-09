@@ -7,6 +7,14 @@
 * `time_scale` is checked the same way everywhere (0.1 to 50): CLI, config file, HTTP API.
   `smisim run --time-scale` now also overrides the value from `--config` (it was ignored).
 
+### Documentation
+
+* docs/configuration.md lists a public source or "assumption" for every default timing
+  value (travel time, shaft rotation, upward factor, reversal pause, slat range, thermal
+  limit, cooldown, answer delay, slow fault). The default travel times and shaft degrees
+  imply faster shafts than published drive speeds; this is documented with a formula to
+  adjust them. A test keeps the table in sync with the code.
+
 ### Added
 
 * Stable in-process Python API: `smisim.Bus`, `BusSettings`, `FrameResult`, `Motor`,

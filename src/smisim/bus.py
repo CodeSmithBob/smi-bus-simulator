@@ -36,7 +36,9 @@ class BusSettings:
     name: str = "SMI line"
     variant: str = "SMI"  # "SMI" (230 V AC drives) or "SMI LoVo" (24 V DC drives)
     echo: bool = False  # send the master's own bytes back, like many real interfaces do
-    response_delay_ms: float = 8.0  # turnaround time between telegram end and answer
+    # Turnaround between telegram end and answer. Assumption: no public figure (see
+    # docs/configuration.md, "Where the default timing values come from").
+    response_delay_ms: float = 8.0
     realtime: bool = True  # pace answers at 2400 baud
     tcp_port: int | None = None
     pty_link: str | None = None

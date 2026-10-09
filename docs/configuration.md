@@ -87,3 +87,46 @@ The in-process Python API has no `time_scale`: you choose the `dt` you pass to
 | `thermal_limit_s` | `240` | Accumulated run time until thermal protection trips |
 | `cooldown_s` | `900` | Time to cool down completely |
 | `start_position` | `0` | Position at start |
+
+## Where the default timing values come from
+
+Every default timing value either has a public source or is marked **assumption**. The
+SMI specification itself is not public and gives no drive speeds. Change the values per
+drive or per line to match the hardware you care about.
+
+| Setting | Default | Source |
+|---|---|---|
+| `travel_time_s` (roller) | `24` | **Assumption.** Travel time depends on window height and winding diameter, so there is no single public figure. |
+| `travel_time_s` (venetian) | `48` | **Assumption** (as above). |
+| `travel_time_s` (screen) | `36` | **Assumption** (as above). |
+| `travel_time_s` (awning) | `30` | **Assumption** (as above). |
+| `shaft_degrees` (roller) | `5400` | **Assumption** (15 turns over the full travel). |
+| `shaft_degrees` (venetian) | `9000` | **Assumption** (25 turns). |
+| `shaft_degrees` (screen) | `6480` | **Assumption** (18 turns). |
+| `shaft_degrees` (awning) | `4320` | **Assumption** (12 turns). |
+| `up_speed_factor` | `0.9` | **Assumption**: the drive lifts the load upwards, so it is taken as 10 % slower. No public figure found. |
+| `reversal_pause_s` | `0.3` | Teco wiki, "The control of venetian blinds and roller blinds": at least 300 ms pause when the direction of an AC blind motor is switched [1]. Gira's venetian blind actuator makes this switch-over time adjustable and refers to the motor maker [2]. |
+| `tilt_degrees` | `270` | elero JA Comfort SMI operating manual: slat turning range 270° of drive shaft by default, adjustable 90° to 360° [3]. |
+| `thermal_limit_s` | `240` | Tubular blind motors are commonly rated for short-time duty **S2 4 min** (4 minutes of continuous running, then cool down), e.g. the Becker R12-17-E01 listing [4] and a 17 rpm 20 Nm tubular motor rated for "4 minutes operation time" [5]. The simulator simplifies this to 240 s of accumulated run time. |
+| `cooldown_s` | `900` | **Assumption.** S2 only says "until cooled down"; no public cooling time found. |
+| `response_delay_ms` | `8` | **Assumption.** No public figure for the SMI answer turnaround. |
+| `slow` fault delay | `400 ms` | **Assumption**, chosen to be longer than the default timeout of the bundled master (250 ms). |
+
+Cross-check of the speeds: published drive speeds are about **17 rpm** for roller-shutter
+tubular motors (elero VariEco S5-K, Becker R12-17) [4][6] and **23–26 rpm** for venetian
+blind drives (elero: all venetian motors 26 rpm; Dunkermotoren D370 SMI: 23 rpm) [7][8].
+The default `travel_time_s` and `shaft_degrees` together imply faster shafts: roller
+5400° / 24 s = 37.5 rpm, venetian 9000° / 48 s = 31 rpm. If shaft speed matters for your
+test (angle steps are measured in shaft degrees), set `shaft_degrees = rpm × 6 × travel_time_s`,
+e.g. 17 rpm × 6 × 24 s = 2448 for a roller shutter.
+
+Sources (found via web search, October 2026):
+
+1. Teco wiki: <https://wiki.tecomat.cz/en/article/71-the-control-of-venetian-blinds-and-roller-blinds>
+2. Gira four-channel venetian blind actuator, installation instructions: <https://partner.gira.com/data3/10201290.pdf>
+3. elero JA Comfort SMI operating manual: <https://ffs-bauelemente.com/wp-content/uploads/2021/03/JA-Comfort-SMI-Bedienungsanleitung-Jalousieantriebe.pdf>
+4. Becker R12-17-E01 tubular motor (retailer listing with the manufacturer data): <https://derrollladen.com/products/becker-rollladenantrieb-r12-17-e01-12nm>
+5. Nu Style 20 Nm 17 rpm tubular motor: <https://shuttermasters.com.au/products/nu-style-tubular-motor-for-roller-shutter>
+6. elero VariEco S-K: <https://www.elero.com/en/products/electrical-drives/varieco-s-k>
+7. elero venetian blind motors: <https://www.elero.com/en/products/venetian-blind-motors>
+8. Dunkermotoren D370 SMI: <https://www.directindustry.com/prod/dunkermotoren-gmbh/product-14411-474601.html>
