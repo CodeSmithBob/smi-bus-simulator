@@ -14,6 +14,19 @@ ROOMS = [
     "Hall", "Studio", "Library", "Lounge", "Meeting", "Lobby", "Stairs", "Gym",
 ]  # fmt: skip
 
+#: Allowed range of the simulation speed multiplier (CLI, TOML, HTTP API, web UI).
+TIME_SCALE_MIN = 0.1
+TIME_SCALE_MAX = 50.0
+
+
+def check_time_scale(value: float) -> float:
+    """Validate a time scale: how many simulated seconds pass per real second."""
+    scale = float(value)
+    if not TIME_SCALE_MIN <= scale <= TIME_SCALE_MAX:
+        raise ValueError(f"time scale must be {TIME_SCALE_MIN:g}..{TIME_SCALE_MAX:g}, got {value}")
+    return scale
+
+
 KIND_CYCLE = [BlindKind.VENETIAN, BlindKind.ROLLER, BlindKind.SCREEN, BlindKind.VENETIAN]
 
 
@@ -29,7 +42,7 @@ class SimConfig:
     http_port: int = 8080
     tcp_host: str = "0.0.0.0"
     tick_hz: float = 20.0
-    time_scale: float = 1.0  # >1 runs the motors faster than real time
+    time_scale: float = 1.0  # simulated seconds per real second (0.1..50)
     buses: list[BusConfig] = field(default_factory=list)
     tcp_base_port: int = 4000
     pty_base: str | None = None
@@ -48,6 +61,7 @@ def load(path: str | Path) -> SimConfig:
         raw = tomllib.load(fh)
     sim = raw.get("simulator", {})
     cfg = SimConfig(**_pick(SimConfig, {k: v for k, v in sim.items() if k != "buses"}))
+    cfg.time_scale = check_time_scale(cfg.time_scale)
     for i, b in enumerate(raw.get("bus", [])):
         b = dict(b)
         motors = b.pop("motor", [])

@@ -98,7 +98,7 @@ All endpoints accept and return JSON. Errors return `{"error": "..."}` with stat
 | GET | `/api/traffic?since=SEQ` | | Bus monitor entries newer than `SEQ` |
 | WS | `/ws?since=SEQ` | | Pushes `{"type":"state","state":…,"traffic":[…]}` 10× per second |
 | POST | `/api/presets/{16\|32\|64\|factory-16\|small}` | | Rebuild the building |
-| POST | `/api/settings` | `{"time_scale": 5}` | Motor speed multiplier (0.1 to 50) |
+| POST | `/api/settings` | `{"time_scale": 5}` | Simulated seconds per real second, 0.1 to 50 ([details](configuration.md#simulation-speed-time_scale)) |
 | POST | `/api/buses` | `{"name": "...", "motors": 16, "kind": "mixed"}` | Add an SMI line |
 | DELETE | `/api/buses/last` | | Remove the last line |
 | PATCH | `/api/buses/{n}` | `{"name", "variant", "echo", "realtime", "response_delay_ms"}` | Line settings |

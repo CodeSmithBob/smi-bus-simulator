@@ -9,6 +9,7 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
+from ..config import check_time_scale
 from ..protocol.frames import decode_any, parse_hex
 from ..simulator import Simulator
 
@@ -167,10 +168,7 @@ async def preset(request, sim: Simulator):
 async def settings(request, sim: Simulator):
     body = await _body(request)
     if "time_scale" in body:
-        scale = float(body["time_scale"])
-        if not 0.1 <= scale <= 50:
-            raise ValueError("time scale must be 0.1..50")
-        sim.config.time_scale = scale
+        sim.config.time_scale = check_time_scale(body["time_scale"])
     return _json({"time_scale": sim.config.time_scale})
 
 

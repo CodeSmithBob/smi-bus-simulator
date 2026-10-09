@@ -98,6 +98,15 @@ async with SmiMaster(TcpLink("localhost", 4000)) as smi:
     print(await smi.read_position(2))
 ```
 
+### Simulation speed
+
+Drives move in real time by default. To watch long runs faster, raise `time_scale`
+(simulated seconds per real second, 0.1 to 50): `smisim run --time-scale 10`,
+`time_scale = 10` under `[simulator]` in a config file, the *Speed* list in the web UI, or
+`POST /api/settings` with `{"time_scale": 10}`. It speeds up the drives only; telegram
+timing on the wire stays at 2400 baud. Details:
+[configuration.md](docs/configuration.md#simulation-speed-time_scale).
+
 ## Who is it for?
 
 * **Controller and gateway developers** (KNX, BACnet, Modbus, Matter, Home Assistant,

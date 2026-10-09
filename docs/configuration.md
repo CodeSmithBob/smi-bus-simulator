@@ -20,8 +20,34 @@ For a fixed building, use a TOML file: `smisim run --config building.toml`.
 | `tcp_host` | `0.0.0.0` | Bind address of the line sockets |
 | `tcp_base_port` | `4000` | Line *n* listens on `tcp_base_port + n` unless it sets `tcp_port` |
 | `tick_hz` | `20` | Motion update rate |
-| `time_scale` | `1.0` | Motor speed multiplier |
+| `time_scale` | `1.0` | Simulated seconds per real second, 0.1 to 50 (see [Simulation speed](#simulation-speed-time_scale)) |
 | `pty_base` | none | Prefix for virtual serial ports of lines added at runtime |
+
+## Simulation speed (`time_scale`)
+
+`time_scale` is how many simulated seconds pass per real second. At `1` the drives move in
+real time. At `10` a 48 s venetian run takes 4.8 s, which helps when you watch long runs or
+the thermal protection. Allowed range: **0.1 to 50**, checked the same way everywhere.
+
+| Where | How | Notes |
+|---|---|---|
+| Command line | `smisim run --time-scale 10` | Overrides the value from `--config` |
+| Config file | `[simulator]` `time_scale = 10` | |
+| HTTP API | `POST /api/settings` with `{"time_scale": 10}` | Answers `{"time_scale": 10}`; out-of-range values give status 400. The current value is in `GET /api/state` → `time_scale`. |
+| Web UI | *Speed* list in the top bar (1×, 2×, 5×, 10×, 25×) | Takes effect at once. A value set elsewhere (e.g. 4×) is added to the list. |
+
+What it speeds up: everything the drives do over time, which is travel, slat turning,
+angle steps, the reversal pause, calibration runs, heating and cooling of the thermal
+protection, and the identify blink.
+
+What it does **not** change: the wire. Telegram bytes are still paced at 2400 baud, the
+answer delay (`response_delay_ms`) and the `slow` fault (400 ms) stay the same, and so do
+your controller's timeouts and the test-lab windows (3 s retry, 15 s offline, 20 s thermal)
+and the bus-load meter. At a high scale, a controller that polls positions therefore sees
+bigger jumps between two reads.
+
+The in-process Python API has no `time_scale`: you choose the `dt` you pass to
+`Bus.update(dt)`.
 
 ## `[[bus]]` (one per SMI line)
 

@@ -10,7 +10,7 @@ import signal
 import sys
 
 from . import __version__
-from .config import SimConfig, generate, load
+from .config import SimConfig, check_time_scale, generate, load
 from .protocol.frames import decode_any, parse_hex
 
 
@@ -35,7 +35,12 @@ def _run_parser(sub) -> None:
     p.add_argument("--shared-bus", action="store_true", help="serial port is a real SMI bus")
     p.add_argument("--echo", action="store_true", help="echo master bytes like many interfaces")
     p.add_argument("--no-realtime", action="store_true", help="answer instantly (no 2400 baud)")
-    p.add_argument("--time-scale", type=float, default=1.0, help="motor speed multiplier")
+    p.add_argument(
+        "--time-scale",
+        type=float,
+        default=None,
+        help="simulated seconds per real second, 0.1 to 50 (default 1; overrides the config file)",
+    )
     p.add_argument("--no-web", action="store_true", help="do not start the web UI")
     p.add_argument("-v", "--verbose", action="store_true")
 
@@ -62,7 +67,7 @@ def _send_parser(sub) -> None:
     p.add_argument("value", nargs="?", help="percent/position/angle/new address/hex bytes")
 
 
-def main(argv: list[str] | None = None) -> int:
+def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="smisim", description="SMI bus simulator")
     parser.add_argument("--version", action="version", version=f"smisim {__version__}")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -70,7 +75,11 @@ def main(argv: list[str] | None = None) -> int:
     _send_parser(sub)
     d = sub.add_parser("decode", help="decode a telegram given in hex")
     d.add_argument("hex", nargs="+")
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = make_parser().parse_args(argv)
 
     if args.cmd == "decode":
         print(json.dumps(decode_any(parse_hex(" ".join(args.hex))), indent=2))
@@ -88,6 +97,16 @@ def _run(args) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    cfg = build_config(args)
+    try:
+        asyncio.run(_serve(cfg, web=not args.no_web))
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+def build_config(args) -> SimConfig:
+    """Turn ``smisim run`` arguments (and an optional config file) into a SimConfig."""
     if args.config:
         cfg = load(args.config)
     else:
@@ -97,7 +116,7 @@ def _run(args) -> int:
             tcp_host=args.host,
             tcp_base_port=args.tcp_base_port,
             pty_base=args.pty,
-            time_scale=args.time_scale,
+            time_scale=1.0 if args.time_scale is None else args.time_scale,
         )
         cfg.buses = generate(
             buses=args.buses,
@@ -109,17 +128,19 @@ def _run(args) -> int:
             serial_port=args.serial,
             manufacturer=args.manufacturer,
         )
+    if args.time_scale is not None:
+        cfg.time_scale = args.time_scale
+    try:
+        cfg.time_scale = check_time_scale(cfg.time_scale)
+    except ValueError as exc:
+        raise SystemExit(f"smisim: {exc}") from None
     for b in cfg.buses:
         b.settings.echo = b.settings.echo or args.echo
         b.settings.realtime = b.settings.realtime and not args.no_realtime
         if args.serial and b is cfg.buses[0]:
             b.settings.serial_port = args.serial
             b.settings.shared_bus = b.settings.shared_bus or args.shared_bus
-    try:
-        asyncio.run(_serve(cfg, web=not args.no_web))
-    except KeyboardInterrupt:
-        pass
-    return 0
+    return cfg
 
 
 async def _serve(cfg: SimConfig, web: bool) -> None:

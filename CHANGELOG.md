@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+* `time_scale` is checked the same way everywhere (0.1 to 50): CLI, config file, HTTP API.
+  `smisim run --time-scale` now also overrides the value from `--config` (it was ignored).
+
 ### Added
 
 * Stable in-process Python API: `smisim.Bus`, `BusSettings`, `FrameResult`, `Motor`,
