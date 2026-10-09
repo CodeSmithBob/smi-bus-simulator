@@ -47,7 +47,7 @@ new names) are not breaking.
 | `smisim.FrameResult` | named tuple `(reply: bytes, delay_s: float)`; `reply` is empty when no drive answers |
 | `smisim.BusSettings` | all fields and their meaning ([configuration.md](configuration.md)) |
 | `smisim.MotorConfig` | all fields and their meaning ([configuration.md](configuration.md)) |
-| `smisim.Motor` | read: `uid`, `cfg`, `address`, `key_id`, `position` (0 = top, 65535 = bottom), `tilt` (0..1), `direction` (-1 up, 0, +1 down), `errors`, `faults`, `limits_set`, `slat_percent`, `slat_angle`, `angle_deg`; act: `set_fault(name, active)`, `clear_errors()`, `calibrate()`, `stop()` |
+| `smisim.Motor` | read: `uid`, `cfg`, `address`, `key_id`, `position` (0 = top, 65535 = bottom), `tilt` (0..1), `direction` (-1 up, 0, +1 down), `errors`, `faults`, `limits_set`, `slat_percent`, `slat_angle`, `angle_deg`; act: `set_fault(name, active)`, `clear_errors()`, `calibrate()`, `stop()`; test control: `target_position`, `move_to(position)`, `set_position(position, *, tilt=None)` |
 | `smisim.BlindKind`, `smisim.FAULTS` | values and keys |
 | `smisim.protocol` | `Addressing`, `AddrMode`, `MasterTelegram`, `Command`, `DiagCode`, `QueryCode`, `Response`, `decode_response`, `checksum`, `checksum_ok`, `expected_response_length`, `ACK`, `NACK` |
 
@@ -56,6 +56,25 @@ better sources appear. Such a change is a protocol fix, not an API break, and is
 the changelog. Everything else (`smisim.simulator`, `smisim.transports`, `smisim.web`,
 `smisim.testlab`, `smisim.client`, the dictionaries returned by `to_state()`, traffic log
 entries) is internal and may change in any release.
+
+### Test control
+
+Tests often need a drive in a known state, or moving, without composing telegrams. Use these
+instead of private fields:
+
+| Member | Meaning |
+|---|---|
+| `motor.target_position` | Read-only. Where the drive is heading (0 = top, 65535 = bottom), or its current `position` when it is not moving. For an angle step it is where the step ends. Slat turning does not change it. |
+| `motor.move_to(position)` | Starts a move without a telegram, like a GOTO (venetian slat turn and reversal pause included). It ignores whether end positions are set. Returns `False` and does nothing when the drive cannot move (offline, blocked, thermal protection). |
+| `motor.set_position(position, *, tilt=None)` | Stops the drive and puts it at `position` at once. `tilt` (0..1) also sets the slat turn of a venetian blind. |
+
+```python
+drive = bus.motors[0]
+drive.set_position(0x4000)  # start the test at 25 %
+drive.move_to(0xFFFF)  # then let it run down
+while drive.position != drive.target_position:
+    bus.update(0.1)
+```
 
 Notes:
 

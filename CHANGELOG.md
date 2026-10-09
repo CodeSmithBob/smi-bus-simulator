@@ -9,6 +9,8 @@
   docs/api.md. It works without the web server and without asyncio, and follows semver from
   0.3.0 on. `Bus.handle_frame()` now returns a `FrameResult` named tuple (still unpacks as
   `reply, delay`), `source` defaults to `"api"`, and `Bus()` can be built from settings alone.
+* Test control on `Motor`: read-only `target_position`, `move_to(position)` (start a move
+  without a telegram) and `set_position(position, *, tilt=None)` (stop and place the drive).
 
 ## 0.2.0 (2026-10-09)
 

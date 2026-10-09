@@ -63,6 +63,13 @@ KIND_DEFAULTS: dict[BlindKind, dict] = {
 }
 
 
+def _check_position(position: float) -> float:
+    value = float(position)
+    if not 0.0 <= value <= FULL:
+        raise ValueError("position must be 0..65535")
+    return value
+
+
 def make_key_id(seed: object) -> int:
     """Deterministic, unique-looking 32-bit slave ID."""
     return random.Random(str(seed)).randrange(0x00100000, 0xFFFFFFFF)
@@ -232,6 +239,65 @@ class Motor:
         self._budget_deg = None
         self._pause_s = 0.0
         self.direction = 0
+
+    # --- test control (public, stable; see docs/api.md) ------------------------
+
+    @property
+    def target_position(self) -> float:
+        """Position (0 = top, 65535 = bottom) the drive is heading for.
+
+        Equals :attr:`position` when the drive is not moving. For an angle step it is
+        where the step ends. Slat turning of venetian blinds does not change it, and an
+        obstacle or thermal trip on the way is not predicted.
+        """
+        pos, tilt, budget = self.position, self.tilt, self._budget_deg
+        for seg in self._plan:
+            if seg.kind == "tilt":
+                need = abs(seg.goal - tilt) * self.cfg.tilt_degrees
+                if budget is not None:
+                    if budget <= need:
+                        break
+                    budget -= need
+                tilt = seg.goal
+                continue
+            distance = abs(seg.goal - pos)
+            if budget is not None:
+                reach = budget / float(self.cfg.shaft_degrees) * FULL
+                if reach < distance:
+                    pos += reach if seg.goal > pos else -reach
+                    break
+                budget -= distance / FULL * float(self.cfg.shaft_degrees)
+            pos = seg.goal
+        return pos
+
+    def move_to(self, position: float) -> bool:
+        """Start a move to ``position`` without a telegram (out-of-band test action).
+
+        Behaves like a GOTO telegram, including the slat turn of venetian blinds and the
+        reversal pause, but ignores whether end positions are set. Returns ``False`` and
+        does nothing when the drive cannot move (offline, blocked, thermal protection).
+        """
+        position = _check_position(position)
+        if "offline" in self.faults or not self._can_move():
+            return False
+        self.errors.discard("obstacle")
+        self._plan_move(position)
+        return True
+
+    def set_position(self, position: float, *, tilt: float | None = None) -> None:
+        """Stop the drive and put it at ``position`` at once (test setup).
+
+        ``tilt`` (0..1, venetian blinds) sets the slat turn as well; by default the slats
+        keep their current turn.
+        """
+        position = _check_position(position)
+        if tilt is not None and not 0.0 <= tilt <= 1.0:
+            raise ValueError("tilt must be 0..1")
+        self.stop()
+        self.position = position
+        if tilt is not None:
+            self.tilt = float(tilt)
+        self._run_start = position
 
     def update(self, dt: float) -> None:
         self.wink_s = max(0.0, self.wink_s - dt)

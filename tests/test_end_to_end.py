@@ -45,7 +45,7 @@ async def test_group_command_moves_only_members():
     try:
         bus = sim.buses[0]
         for m in bus.motors:
-            m.position = 0
+            m.set_position(0)
         async with SmiMaster(TcpLink("127.0.0.1", _port(sim))) as master:
             r = await master.command(Addressing.to_slaves([1, 3]), Command.DOWN)
             assert r.kind == "ack"
@@ -60,8 +60,8 @@ async def test_duplicate_addresses_spoil_reads():
     sim = await _sim(buses=1, motors_per_bus=3, factory_new=True, kind="roller")
     try:
         bus = sim.buses[0]
-        bus.motors[0].position = 0x1234
-        bus.motors[1].position = 0xFF00
+        bus.motors[0].set_position(0x1234)
+        bus.motors[1].set_position(0xFF00)
         async with SmiMaster(TcpLink("127.0.0.1", _port(sim)), retries=0) as master:
             r = await master.read(0, QueryCode.POSITION)
             assert r.kind == "garbled"

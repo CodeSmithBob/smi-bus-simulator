@@ -89,3 +89,71 @@ def test_example_in_docs_runs():
     after = text.split("<!-- example:python-api", 1)[1]
     code = after.split("```python", 1)[1].split("```", 1)[0]
     exec(compile(code, "docs/api.md", "exec"), {})
+
+
+def run(bus: Bus, seconds: float, dt: float = 0.05) -> None:
+    for _ in range(round(seconds / dt)):
+        bus.update(dt)
+
+
+def test_target_position_follows_moves():
+    bus = make_bus()
+    office = bus.motors[0]
+    assert office.target_position == office.position == 0  # idle: its own position
+    assert office.move_to(0x8000) is True
+    assert office.target_position == 0x8000
+    run(bus, 2)
+    assert 0 < office.position < 0x8000 and office.target_position == 0x8000
+    run(bus, 5)
+    assert office.position == office.target_position == 0x8000
+
+
+def test_target_position_of_angle_steps_and_venetian_runs():
+    bus = make_bus()
+    office, hall = bus.motors
+    # Roller: 90 deg of a 5400 deg travel is 1/60 of the full range.
+    bus.handle_frame(
+        MasterTelegram.command(Addressing.to_slave(3), Command.DOWN, angle_deg=90).encode()
+    )
+    assert office.target_position == pytest.approx(0xFFFF / 60)
+    # Venetian at the top: a small step only turns the slats, the rail stays put.
+    bus.handle_frame(
+        MasterTelegram.command(Addressing.to_slave(4), Command.DOWN, angle_deg=90).encode()
+    )
+    assert hall.target_position == 0
+    hall.move_to(0xFFFF)
+    assert hall.target_position == 0xFFFF
+
+
+def test_set_position_stops_and_places_the_drive():
+    bus = make_bus()
+    office, hall = bus.motors
+    office.move_to(0xFFFF)
+    run(bus, 1)
+    office.set_position(0x4000)
+    assert office.direction == 0 and office.position == office.target_position == 0x4000
+    run(bus, 1)
+    assert office.position == 0x4000  # stays: the move was cancelled
+    assert read_position(bus, 3) == 0x4000
+    hall.set_position(0xFFFF, tilt=0.5)
+    assert hall.position == 0xFFFF and hall.slat_percent == 50
+
+
+def test_move_to_refuses_when_the_drive_cannot_move():
+    bus = make_bus()
+    office = bus.motors[0]
+    office.set_fault("blocked", True)
+    assert office.move_to(0xFFFF) is False
+    office.set_fault("blocked", False)
+    office.set_fault("offline", True)
+    assert office.move_to(0xFFFF) is False
+    assert office.target_position == 0
+    for bad in (-1, 0x10000):
+        with pytest.raises(ValueError):
+            office.move_to(bad)
+        with pytest.raises(ValueError):
+            office.set_position(bad)
+    with pytest.raises(ValueError):
+        office.set_position(0, tilt=2)
+    with pytest.raises(AttributeError):
+        office.target_position = 5  # read-only
