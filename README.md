@@ -75,7 +75,19 @@ smisim send --tcp localhost:4000 discover           # address factory-new drives
 smisim decode 43 C0 80 03 01 79                     # explain any telegram
 ```
 
-Or from Python:
+Or embed the drives in your own program or test suite, with no server and no asyncio (the
+[stable Python API](docs/api.md#python-in-process-api-stable)):
+
+```python
+from smisim import Bus, BusSettings, MotorConfig
+
+bus = Bus(settings=BusSettings(name="Lab line"))
+bus.add_motor(MotorConfig(address=3, kind="venetian"))
+reply, delay = bus.handle_frame(bytes.fromhex("53 02 AB"))  # DOWN to slave 3 -> ACK
+bus.update(1.0)  # one simulated second
+```
+
+Or talk to a running simulator from Python:
 
 ```python
 from smisim.client import SmiMaster, TcpLink
@@ -105,7 +117,7 @@ async with SmiMaster(TcpLink("localhost", 4000)) as smi:
 | [docs/hardware.md](docs/hardware.md) | TCP, PTY, USB-serial and shared real bus, plus Docker and safety notes |
 | [docs/testing-controllers.md](docs/testing-controllers.md) | Sizing, commissioning, calibration, test lab, fault reference |
 | [docs/configuration.md](docs/configuration.md) | TOML configuration reference |
-| [docs/api.md](docs/api.md) | HTTP and WebSocket API |
+| [docs/api.md](docs/api.md) | Stable Python in-process API (embed drives without the server), HTTP and WebSocket API |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, architecture, how to propose protocol fixes |
 
 ## Architecture

@@ -1,4 +1,10 @@
-"""One SMI line: up to 16 drives sharing a two-wire, wired-AND data bus."""
+"""One SMI line: up to 16 drives sharing a two-wire, wired-AND data bus.
+
+:class:`Bus`, :class:`BusSettings` and :class:`FrameResult` are part of the stable
+in-process API (see docs/api.md). A ``Bus`` needs neither the web server nor a running
+asyncio event loop: feed it raw telegrams with :meth:`Bus.handle_frame` and advance time
+with :meth:`Bus.update`.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +14,7 @@ import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 from .motor import Motor, MotorConfig
 from .protocol.constants import BYTE_TIME_S, MAX_DRIVES_PER_BUS
@@ -75,10 +82,17 @@ class Transaction:
 Listener = Callable[[Transaction], None]
 
 
+class FrameResult(NamedTuple):
+    """Outcome of :meth:`Bus.handle_frame`. Unpacks as ``reply, delay_s``."""
+
+    reply: bytes  # what the master reads back (wired-AND of all answers); b"" = silence
+    delay_s: float  # turnaround before the first answer byte, in seconds
+
+
 class Bus:
-    def __init__(self, index: int, settings: BusSettings) -> None:
+    def __init__(self, index: int = 0, settings: BusSettings | None = None) -> None:
         self.index = index
-        self.settings = settings
+        self.settings = settings if settings is not None else BusSettings()
         self.motors: list[Motor] = []
         self.traffic: deque[TrafficEntry] = deque(maxlen=4000)
         self.listeners: list[Listener] = []
@@ -109,19 +123,28 @@ class Bus:
         raise KeyError(uid)
 
     def update(self, dt: float) -> None:
+        """Advance simulated time by ``dt`` seconds for every drive on the line."""
+        if dt < 0:
+            raise ValueError("dt must not be negative")
         for m in self.motors:
             m.update(dt)
 
     # --- telegram handling -----------------------------------------------------
 
-    def handle_frame(self, raw: bytes, source: str) -> tuple[bytes, float]:
-        """Process one complete master telegram. Returns (answer bytes, answer delay)."""
+    def handle_frame(self, raw: bytes | bytearray, source: str = "api") -> FrameResult:
+        """Process one complete master telegram, checksum included.
+
+        Every addressed drive executes it at once. Returns the bytes the master would
+        read (empty if no drive answers or the telegram is invalid) and the answer delay.
+        Invalid telegrams are logged and ignored, like real drives do.
+        """
+        raw = bytes(raw)
         now = time.time()
         try:
             tel = MasterTelegram.decode(raw)
         except (FrameError, ValueError, IndexError) as exc:
             self.log_error(raw, str(exc), source)
-            return b"", 0.0
+            return FrameResult(b"", 0.0)
         tx = next(self._tx)
         self.stats["telegrams"] += 1
         self._log("M", source, raw, tel.describe(), status=tel.status, tx=tx, t=now)
@@ -157,7 +180,7 @@ class Bus:
         txn = Transaction(self, tel, raw, reply, response, responders, silent, source, now)
         for listener in list(self.listeners):
             listener(txn)
-        return reply, delay
+        return FrameResult(reply, delay)
 
     async def transact(self, raw: bytes, source: str = "ui") -> bytes:
         """Used by in-process masters (web UI, test lab): send and wait like on the wire."""

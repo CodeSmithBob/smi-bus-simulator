@@ -1,4 +1,74 @@
-# HTTP / WebSocket API
+# API
+
+The simulator has two APIs:
+
+* the **Python in-process API**: embed drives and SMI lines in your own program or test
+  suite, without the web server and without asyncio. It is **stable** (see below);
+* the **HTTP / WebSocket API** of `smisim run`, used by the web UI and handy for scripts.
+
+## Python in-process API (stable)
+
+Install the package (`pip install git+https://github.com/CodeSmithBob/smi-bus-simulator`) and drive a line
+directly. A `Bus` is one SMI line. `handle_frame()` takes raw telegram bytes (checksum
+included) and returns what the master would read back. `update(dt)` moves simulated time
+forward by `dt` seconds. Nothing runs in the background, so your program decides how time
+passes.
+
+<!-- example:python-api (executed by tests/test_public_api.py) -->
+```python
+from smisim import Bus, BusSettings, MotorConfig
+from smisim.protocol import Addressing, MasterTelegram, QueryCode, decode_response
+
+bus = Bus(settings=BusSettings(name="Lab line"))
+bus.add_motor(MotorConfig(name="Office", address=3, kind="roller", travel_time_s=10))
+
+reply, delay = bus.handle_frame(bytes.fromhex("53 02 AB"))  # DOWN to slave 3
+assert reply == b"\xff"  # ACK
+
+for _ in range(50):  # 5 simulated seconds
+    bus.update(0.1)
+
+query = MasterTelegram.query(Addressing.to_slave(3), QueryCode.POSITION)
+answer = decode_response(query, bus.handle_frame(query.encode()).reply)
+print(answer.value)  # about 32768 (50 %)
+```
+
+### Stable names
+
+From version **0.3.0** on, the names below follow [Semantic Versioning](https://semver.org/).
+While the version is below 1.0, a breaking change to any of them bumps the **minor**
+version (0.3 → 0.4) and is listed under *Breaking* in [CHANGELOG.md](../CHANGELOG.md).
+Patch releases (0.3.0 → 0.3.1) never break them. Additions (new optional parameters,
+new names) are not breaking.
+
+| Name | Stable part |
+|---|---|
+| `smisim.Bus` | `Bus(index=0, settings=None)`, `add_motor(cfg, *, force=False) -> Motor`, `remove_motor(uid)`, `motor(uid)`, `motors` (list), `handle_frame(raw, source="api") -> FrameResult`, `update(dt)`, `settings`, `stats`, `duplicate_addresses()` |
+| `smisim.FrameResult` | named tuple `(reply: bytes, delay_s: float)`; `reply` is empty when no drive answers |
+| `smisim.BusSettings` | all fields and their meaning ([configuration.md](configuration.md)) |
+| `smisim.MotorConfig` | all fields and their meaning ([configuration.md](configuration.md)) |
+| `smisim.Motor` | read: `uid`, `cfg`, `address`, `key_id`, `position` (0 = top, 65535 = bottom), `tilt` (0..1), `direction` (-1 up, 0, +1 down), `errors`, `faults`, `limits_set`, `slat_percent`, `slat_angle`, `angle_deg`; act: `set_fault(name, active)`, `clear_errors()`, `calibrate()`, `stop()` |
+| `smisim.BlindKind`, `smisim.FAULTS` | values and keys |
+| `smisim.protocol` | `Addressing`, `AddrMode`, `MasterTelegram`, `Command`, `DiagCode`, `QueryCode`, `Response`, `decode_response`, `checksum`, `checksum_ok`, `expected_response_length`, `ACK`, `NACK` |
+
+Wire encodings marked *provisional* in [protocol.md](protocol.md) may still change when
+better sources appear. Such a change is a protocol fix, not an API break, and is listed in
+the changelog. Everything else (`smisim.simulator`, `smisim.transports`, `smisim.web`,
+`smisim.testlab`, `smisim.client`, the dictionaries returned by `to_state()`, traffic log
+entries) is internal and may change in any release.
+
+Notes:
+
+* `handle_frame()` and `update()` are synchronous and do not need an event loop. The
+  `Bus` is not thread-safe: call it from one thread.
+* `handle_frame()` ignores invalid telegrams (bad checksum, wrong length), like real drives,
+  and returns an empty reply. They are counted in `bus.stats["errors"]`.
+* Answers from several drives are combined as on the real wire (bitwise AND), so a read
+  addressed to two drives with the same address comes back garbled.
+* `delay_s` is the turnaround the drive would wait before answering. The `Bus` itself never
+  sleeps. Pace your own transport with it if you need realistic timing.
+
+## HTTP / WebSocket API
 
 All endpoints accept and return JSON. Errors return `{"error": "..."}` with status 400 or 404.
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+* Stable in-process Python API: `smisim.Bus`, `BusSettings`, `FrameResult`, `Motor`,
+  `MotorConfig`, `BlindKind`, `FAULTS` and the `smisim.protocol` names listed in
+  docs/api.md. It works without the web server and without asyncio, and follows semver from
+  0.3.0 on. `Bus.handle_frame()` now returns a `FrameResult` named tuple (still unpacks as
+  `reply, delay`), `source` defaults to `"api"`, and `Bus()` can be built from settings alone.
+
 ## 0.2.0 (2026-10-09)
 
 * Two views per window: front view (lift) and side section (slat angle, roll diameter,
