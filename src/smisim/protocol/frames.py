@@ -20,6 +20,7 @@ from .constants import (
     LOW_NIBBLE,
     MANUFACTURER_ALL,
     MAX_SLAVE_ADDRESS,
+    POSITION_BOTTOM,
     QUERY_PAYLOAD_LEN,
     QUERY_RESPONSE_LEN,
     RESP_LEN_FLAG,
@@ -311,7 +312,7 @@ class MasterTelegram:
             parts = [name]
             if self.word is not None:
                 verb = "store" if self.code in (Command.POS1, Command.POS2) else "pos"
-                parts.append(f"{verb}={self.word} ({self.word / 655.35:.1f}%)")
+                parts.append(f"{verb} {raw_position_text(self.word)}")
             if self.byte is not None:
                 parts.append(f"angle={self.angle_deg}deg")
             if self.option is not None:
@@ -456,8 +457,8 @@ class Response:
             on = [n for n, f in zip(names, self.flags, strict=False) if f]
             return "ACK flags: " + (", ".join(on) if on else "none")
         if self.kind == "data" and self.value is not None:
-            if tel and tel.code in (QueryCode.POSITION, QueryCode.POS1, QueryCode.POS2):
-                return f"{self.value} ({self.value / 655.35:.1f}%)"
+            if tel and tel.code in POSITION_LABELS:
+                return f"{POSITION_LABELS[tel.code]} {raw_position_text(self.value)}"
             if tel and tel.code == QueryCode.ANGLE:
                 return f"{self.value * ANGLE_UNIT_DEG} deg"
             if tel and tel.code == QueryCode.KEY_ID:
@@ -476,6 +477,20 @@ class Response:
             "error": self.error,
             "text": self.describe(tel),
         }
+
+
+#: Label of position-like answers. The value is shown raw: what it means physically depends
+#: on the drive (e.g. venetian drives with ``tilt_in_position`` also count the slat turn).
+POSITION_LABELS: dict[int, str] = {
+    QueryCode.POSITION: "pos",
+    QueryCode.POS1: "pos1",
+    QueryCode.POS2: "pos2",
+}
+
+
+def raw_position_text(value: int) -> str:
+    """A raw SMI position, e.g. ``41321 / 65535`` (0 = upper end, 65535 = lower end)."""
+    return f"{value} / {POSITION_BOTTOM}"
 
 
 FLAG_NAMES: dict[tuple[int, int], list[str]] = {
@@ -526,12 +541,38 @@ def parse_hex(text: str) -> bytes:
     return bytes(int(tok, 16) for tok in cleaned)
 
 
+def decode_data_answer(raw: bytes) -> dict | None:
+    """Decode a drive's data answer (``EF code|len data.. ck``) on its own.
+
+    Data answers name the query they answer, so they can be read without the request.
+    Returns ``None`` if ``raw`` is not a complete, valid data answer.
+    """
+    raw = bytes(raw)
+    if len(raw) < 4 or raw[0] != DATA_RESPONSE or not checksum_ok(raw):
+        return None
+    lengths = {flag: n for n, flag in RESP_LEN_FLAG.items()}
+    length = lengths.get(raw[1] & 0x60)
+    if length is None or len(raw) != 3 + length:
+        return None
+    try:
+        code = QueryCode(raw[1] & 0x1F)
+    except ValueError:
+        return None
+    value = int.from_bytes(raw[2:-1], "big")
+    tel = MasterTelegram.query(Addressing.broadcast(), code)
+    text = Response("data", raw, value=value).describe(tel)
+    return {"query": code.name, "value": value, "text": f"answer to READ {code.name}: {text}"}
+
+
 def decode_any(raw: bytes) -> dict:
     """Best-effort decoding of a byte string for the monitor and the CLI."""
     try:
         tel = MasterTelegram.decode(raw)
         return {"ok": True, "telegram": tel.to_dict()}
     except (FrameError, ValueError, IndexError) as exc:
+        answer = decode_data_answer(raw)
+        if answer is not None:
+            return {"ok": True, "answer": answer}
         hint = None
         if raw and raw[0] == DATA_RESPONSE:
             hint = "looks like a data response from a drive"

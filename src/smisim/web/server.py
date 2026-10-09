@@ -9,6 +9,7 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
+from ..bus import traffic_csv
 from ..config import check_time_scale
 from ..protocol.frames import decode_any, parse_hex
 from ..simulator import Simulator
@@ -78,6 +79,18 @@ async def get_traffic(request, sim: Simulator):
     entries = [e.to_dict() for b in sim.buses for e in b.traffic if e.seq > since]
     entries.sort(key=lambda e: e["seq"])
     return _json(entries[-2000:])
+
+
+@_guard
+async def get_traffic_csv(request, sim: Simulator):
+    since = int(request.query.get("since", 0))
+    entries = [e for b in sim.buses for e in b.traffic if e.seq > since]
+    entries.sort(key=lambda e: e.seq)
+    return web.Response(
+        text=traffic_csv(entries),
+        content_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="smi-bus-trace.csv"'},
+    )
 
 
 @_guard
@@ -244,6 +257,7 @@ def make_app(sim: Simulator) -> web.Application:
     app.router.add_get("/api/state", get_state)
     app.router.add_get("/api/meta", get_meta)
     app.router.add_get("/api/traffic", get_traffic)
+    app.router.add_get("/api/traffic.csv", get_traffic_csv)
     app.router.add_post("/api/decode", decode)
     app.router.add_post("/api/encode", encode)
     app.router.add_post("/api/settings", settings)

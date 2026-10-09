@@ -9,15 +9,24 @@ with :meth:`Bus.update`.
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import itertools
 import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import NamedTuple
 
 from .motor import Motor, MotorConfig
-from .protocol.constants import BYTE_TIME_S, MAX_DRIVES_PER_BUS
+from .protocol.constants import (
+    BYTE_TIME_S,
+    MAX_DRIVES_PER_BUS,
+    POSITION_BOTTOM,
+    QueryCode,
+    TelegramType,
+)
 from .protocol.frames import (
     FrameError,
     MasterTelegram,
@@ -28,6 +37,52 @@ from .protocol.frames import (
 )
 
 _seq = itertools.count(1)
+
+TRAFFIC_CSV_COLUMNS = [
+    "seq", "time", "line", "direction", "source", "hex", "text", "status",
+    "raw_position", "rail_percent", "slat_percent",
+]  # fmt: skip
+
+
+def physical_state(motor: Motor) -> dict:
+    """Where a drive physically is: bottom rail and (venetian) slats, in percent."""
+    state = {"rail_percent": round(motor.position / POSITION_BOTTOM * 100, 1)}
+    if motor.is_venetian:
+        state["slat_percent"] = round(motor.slat_percent, 1)
+    return state
+
+
+def physical_text(state: dict) -> str:
+    text = f"rail {state['rail_percent']:.1f} %"
+    if state.get("slat_percent") is not None:
+        text += f", slats {state['slat_percent']:.0f} %"
+    return text
+
+
+def traffic_csv(entries) -> str:
+    """CSV of traffic entries, one column per field (empty when not applicable)."""
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(TRAFFIC_CSV_COLUMNS)
+    for e in entries:
+        writer.writerow(
+            [
+                e.seq,
+                datetime.fromtimestamp(e.t, UTC).isoformat(timespec="milliseconds"),
+                e.bus + 1,
+                e.direction,
+                e.source,
+                e.hex,
+                e.text,
+                e.status,
+                "" if e.raw_position is None else e.raw_position,
+                "" if e.rail_percent is None else e.rail_percent,
+                "" if e.slat_percent is None else e.slat_percent,
+            ]
+        )
+    return out.getvalue()
+
+
 _uid = itertools.count(1)
 
 
@@ -63,6 +118,11 @@ class TrafficEntry:
     status: str = ""
     ok: bool = True
     tx: int = 0  # transaction number shared by a telegram and its answer
+    # Position answers: the raw value on the wire and, for a single answering drive, where
+    # that drive physically is at that moment (bottom rail 0..100 %, slats 0..100 %).
+    raw_position: int | None = None
+    rail_percent: float | None = None
+    slat_percent: float | None = None
 
     def to_dict(self) -> dict:
         return dict(self.__dict__)
@@ -170,9 +230,16 @@ class Bus:
             self.stats["answers"] += 1
             who = ",".join(str(m.address) for m in responders)
             text = response.describe(tel)
+            extra: dict = {}
+            if tel.ttype is TelegramType.QUERY and tel.code == QueryCode.POSITION:
+                if response.kind == "data":
+                    extra["raw_position"] = response.value
+                if len(responders) == 1:
+                    extra |= physical_state(responders[0])
+                    text += "  · " + physical_text(extra)
             if len(responders) > 1:
                 text += f"  [{len(responders)} drives answered: {who}]"
-            self._log("S", "drive", reply, text, ok=response.ok, tx=tx, t=now + delay)
+            self._log("S", "drive", reply, text, ok=response.ok, tx=tx, t=now + delay, **extra)
         else:
             self.stats["no_answer"] += 1
             why = "no drive addressed" if not addressed else "addressed drive(s) silent"
@@ -215,6 +282,7 @@ class Bus:
         ok: bool = True,
         tx: int = 0,
         t: float | None = None,
+        **extra,
     ) -> None:
         self.traffic.append(
             TrafficEntry(
@@ -228,6 +296,7 @@ class Bus:
                 status=status,
                 ok=ok,
                 tx=tx,
+                **extra,
             )
         )
 

@@ -571,14 +571,13 @@
       $(s).addEventListener("input", renderTraffic));
     $("#mon-clear").addEventListener("click", () => { app.traffic = []; renderTraffic(); });
     $("#mon-export").addEventListener("click", () => {
-      const head = "seq,time,line,direction,source,hex,text,status\n";
-      const body = app.traffic.map((e) => [e.seq, new Date(e.t * 1000).toISOString(), e.bus + 1, e.direction, e.source, e.hex, e.text, e.status]
-        .map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      // The server builds the CSV (raw position, rail % and slat % in their own columns).
+      // Start after the entries cleared from this view.
+      const since = app.traffic.length ? app.traffic[0].seq - 1 : app.lastSeq;
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(new Blob([head + body], { type: "text/csv" }));
+      a.href = `/api/traffic.csv?since=${since}`;
       a.download = "smi-bus-trace.csv";
       a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     });
   }
 

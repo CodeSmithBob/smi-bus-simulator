@@ -26,6 +26,13 @@ All notable changes, one section per release, newest first. Versions follow
 
 ### Changed
 
+* Bus monitor: position values are shown raw (`pos 41321 / 65535`, also in commands such as
+  `GOTO pos 32768 / 65535`) instead of as a percentage, because what the raw value means
+  depends on the drive (venetian drives with `tilt_in_position` also count the slat turn).
+  A position answer from a single drive adds where that drive physically is
+  (`rail 60.0 %, slats 100 %`). The CSV export is built by the server
+  (`GET /api/traffic.csv`) and has `raw_position`, `rail_percent` and `slat_percent`
+  columns. `smisim decode` also decodes a drive's data answer on its own (raw value only).
 * `time_scale` is checked the same way everywhere (0.1 to 50): CLI, config file, HTTP API.
   `smisim run --time-scale` now also overrides the value from `--config` (it was ignored).
 

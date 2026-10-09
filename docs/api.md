@@ -95,7 +95,8 @@ All endpoints accept and return JSON. Errors return `{"error": "..."}` with stat
 |---|---|---|---|
 | GET | `/api/state` | | Full state: lines, drives, statistics, test lab |
 | GET | `/api/meta` | | Fault list, presets, protocol status table |
-| GET | `/api/traffic?since=SEQ` | | Bus monitor entries newer than `SEQ` |
+| GET | `/api/traffic?since=SEQ` | | Bus monitor entries newer than `SEQ`. Position answers carry `raw_position` and, when one drive answered, `rail_percent` / `slat_percent` (where that drive physically was) |
+| GET | `/api/traffic.csv?since=SEQ` | | The same entries as CSV, with `raw_position`, `rail_percent` and `slat_percent` in their own columns (the *Export CSV* button) |
 | WS | `/ws?since=SEQ` | | Pushes `{"type":"state","state":…,"traffic":[…]}` 10× per second |
 | POST | `/api/presets/{16\|32\|64\|factory-16\|small}` | | Rebuild the building |
 | POST | `/api/settings` | `{"time_scale": 5}` | Simulated seconds per real second, 0.1 to 50 ([details](configuration.md#simulation-speed-time_scale)) |
