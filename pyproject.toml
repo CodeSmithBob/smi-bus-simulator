@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,7 +7,8 @@ name = "smi-bus-simulator"
 version = "0.2.0"
 description = "Open-source simulator for SMI (Standard Motor Interface) sunblind and roller-shutter drives, with a live web visualization."
 readme = "README.md"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [{ name = "CodeSmithBob" }]
 keywords = ["smi", "standard motor interface", "sunblind", "roller shutter", "venetian blind", "building automation", "simulator"]
@@ -15,9 +16,11 @@ classifiers = [
   "Development Status :: 3 - Alpha",
   "Framework :: AsyncIO",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: Apache Software License",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Home Automation",
   "Topic :: System :: Emulators",
 ]
@@ -33,8 +36,10 @@ dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.4", "pyyaml>=6"]
 smisim = "smisim.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/codesmithbob/smi-bus-simulator"
-Issues = "https://github.com/codesmithbob/smi-bus-simulator/issues"
+Homepage = "https://github.com/CodeSmithBob/smi-bus-simulator"
+Documentation = "https://github.com/CodeSmithBob/smi-bus-simulator/tree/main/docs"
+Changelog = "https://github.com/CodeSmithBob/smi-bus-simulator/blob/main/CHANGELOG.md"
+Issues = "https://github.com/CodeSmithBob/smi-bus-simulator/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

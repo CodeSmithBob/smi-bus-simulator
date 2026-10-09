@@ -8,8 +8,7 @@ The simulator has two APIs:
 
 ## Python in-process API (stable)
 
-Install the package (`pip install git+https://github.com/CodeSmithBob/smi-bus-simulator`) and drive a line
-directly. A `Bus` is one SMI line. `handle_frame()` takes raw telegram bytes (checksum
+Install the package (`pip install smi-bus-simulator`) and drive a line directly. A `Bus` is one SMI line. `handle_frame()` takes raw telegram bytes (checksum
 included) and returns what the master would read back. `update(dt)` moves simulated time
 forward by `dt` seconds. Nothing runs in the background, so your program decides how time
 passes.

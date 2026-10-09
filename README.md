@@ -8,14 +8,14 @@ microcontroller, a Docker container) to the simulator. The simulator answers lik
 of real SMI drives: they move, tilt their slats, report positions, trip their thermal
 protection and lose their end positions. You watch it all happen on a virtual facade.
 
-![Web UI with two SMI lines of 16 drives each](docs/images/screenshot.png)
+![Web UI with two SMI lines of 16 drives each](https://raw.githubusercontent.com/CodeSmithBob/smi-bus-simulator/main/docs/images/screenshot.png)
 
 > Open source under Apache-2.0. Not affiliated with or endorsed by SMI Standard Motor
 > Interface e.V. "SMI" is used only to describe the protocol. The official specification is
 > members-only, so this project is built from public sources, with every assumption
-> marked. See [docs/protocol.md](docs/protocol.md).
+> marked. See [docs/protocol.md](https://github.com/CodeSmithBob/smi-bus-simulator/blob/main/docs/protocol.md).
 
-![Front view and side section per window](docs/images/two-views.png)
+![Front view and side section per window](https://raw.githubusercontent.com/CodeSmithBob/smi-bus-simulator/main/docs/images/two-views.png)
 
 ## Features
 
@@ -53,17 +53,21 @@ protection and lose their end positions. You watch it all happen on a virtual fa
 ## Quick start
 
 ```bash
-pip install git+https://github.com/codesmithbob/smi-bus-simulator
+pip install smi-bus-simulator
 smisim run --buses 2 --motors 16 --pty /tmp/smi
 ```
 
 Open <http://localhost:8080>. Line 1 is on `tcp://localhost:4000` and `/tmp/smi0`, line 2
 on `tcp://localhost:4001` and `/tmp/smi1`.
 
+The package is on [PyPI](https://pypi.org/project/smi-bus-simulator/) and needs Python
+3.11 or newer. For the latest unreleased code, install from GitHub instead:
+`pip install git+https://github.com/CodeSmithBob/smi-bus-simulator`.
+
 With Docker:
 
 ```bash
-git clone https://github.com/codesmithbob/smi-bus-simulator && cd smi-bus-simulator
+git clone https://github.com/CodeSmithBob/smi-bus-simulator && cd smi-bus-simulator
 docker compose up            # uses examples/two-floors.toml
 ```
 
@@ -79,7 +83,7 @@ smisim decode 43 C0 80 03 01 79                     # explain any telegram
 ```
 
 Or embed the drives in your own program or test suite, with no server and no asyncio (the
-[stable Python API](docs/api.md#python-in-process-api-stable)):
+[stable Python API](https://github.com/CodeSmithBob/smi-bus-simulator/blob/main/docs/api.md#python-in-process-api-stable)):
 
 ```python
 from smisim import Bus, BusSettings, MotorConfig
@@ -108,14 +112,14 @@ Drives move in real time by default. To watch long runs faster, raise `time_scal
 `time_scale = 10` under `[simulator]` in a config file, the *Speed* list in the web UI, or
 `POST /api/settings` with `{"time_scale": 10}`. It speeds up the drives only; telegram
 timing on the wire stays at 2400 baud. Details:
-[configuration.md](docs/configuration.md#simulation-speed-time_scale).
+[configuration.md](https://github.com/CodeSmithBob/smi-bus-simulator/blob/main/docs/configuration.md#simulation-speed-time_scale).
 
 ## Who is it for?
 
 * **Controller and gateway developers** (KNX, BACnet, Modbus, Matter, Home Assistant,
   openHAB, PLC programs) who need 16, 32 or 64 drives on the desk without a test wall.
 * **Teams preparing for SMI certification** who want to pre-test commissioning, polling,
-  retries and fault handling at full line size. The [test lab](docs/testing-controllers.md)
+  retries and fault handling at full line size. The [test lab](https://github.com/CodeSmithBob/smi-bus-simulator/blob/main/docs/testing-controllers.md)
   is an unofficial pre-check, not the certification itself.
 * **Integrators and trainers** who want to show how SMI addressing, groups and
   diagnosis work.
@@ -125,12 +129,12 @@ timing on the wire stays at 2400 baud. Details:
 
 | Document | Content |
 |---|---|
-| [docs/protocol.md](docs/protocol.md) | What is known about the SMI wire format, with sources and status |
-| [docs/hardware.md](docs/hardware.md) | TCP, PTY, USB-serial and shared real bus, plus Docker and safety notes |
-| [docs/testing-controllers.md](docs/testing-controllers.md) | Sizing, commissioning, calibration, test lab, fault reference |
-| [docs/configuration.md](docs/configuration.md) | TOML configuration reference |
-| [docs/api.md](docs/api.md) | Stable Python in-process API (embed drives without the server), HTTP and WebSocket API |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, architecture, how to propose protocol fixes |
+| [docs/protocol.md](https://github.com/CodeSmithBob/smi-bus-simulator/blob/main/docs/protocol.md) | What is known about the SMI wire format, with sources and status |
+| [docs/hardware.md](https://github.com/CodeSmithBob/smi-bus-simulator/blob/main/docs/hardware.md) | TCP, PTY, USB-serial and shared real bus, plus Docker and safety notes |
+| [docs/testing-controllers.md](https://github.com/CodeSmithBob/smi-bus-simulator/blob/main/docs/testing-controllers.md) | Sizing, commissioning, calibration, test lab, fault reference |
+| [docs/configuration.md](https://github.com/CodeSmithBob/smi-bus-simulator/blob/main/docs/configuration.md) | TOML configuration reference |
+| [docs/api.md](https://github.com/CodeSmithBob/smi-bus-simulator/blob/main/docs/api.md) | Stable Python in-process API (embed drives without the server), HTTP and WebSocket API |
+| [CONTRIBUTING.md](https://github.com/CodeSmithBob/smi-bus-simulator/blob/main/CONTRIBUTING.md) | Development setup, architecture, how to propose protocol fixes |
 
 ## Architecture
 
@@ -149,17 +153,17 @@ src/smisim/
 ## Status and limits
 
 The project is pre-1.0. The current version and what changed in each release are in
-[CHANGELOG.md](CHANGELOG.md); releases are on the
+[CHANGELOG.md](https://github.com/CodeSmithBob/smi-bus-simulator/blob/main/CHANGELOG.md); releases are on the
 [GitHub releases page](https://github.com/CodeSmithBob/smi-bus-simulator/releases). The
-[Python in-process API](docs/api.md#python-in-process-api-stable) follows semantic
+[Python in-process API](https://github.com/CodeSmithBob/smi-bus-simulator/blob/main/docs/api.md#python-in-process-api-stable) follows semantic
 versioning; everything else may still change between minor versions.
 
 The basic command set is based on observed captures. Discovery, address writing and the
 extended queries use **provisional** encodings until someone with access to the
 specification confirms or corrects them. Each one is marked in the UI, in the monitor and
-in [docs/protocol.md](docs/protocol.md). SMI 3.0 D14 properties and parameter read/write
+in [docs/protocol.md](https://github.com/CodeSmithBob/smi-bus-simulator/blob/main/docs/protocol.md). SMI 3.0 D14 properties and parameter read/write
 are not modelled yet. Corrections are very welcome.
 
 ## License
 
-[Apache License 2.0](LICENSE).
+[Apache License 2.0](https://github.com/CodeSmithBob/smi-bus-simulator/blob/main/LICENSE).

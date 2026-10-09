@@ -76,8 +76,17 @@ To publish a release (maintainers):
    `git tag vX.Y.Z && git push origin vX.Y.Z`.
 
 The *Release* workflow (`.github/workflows/release.yml`) then runs the checks and tests,
-builds the sdist and wheel, and publishes a GitHub release with those files and the
-changelog section as notes. Tags with a suffix (`v0.4.0-rc1`) become pre-releases.
+builds the sdist and wheel, uploads them to [PyPI](https://pypi.org/project/smi-bus-simulator/)
+and publishes a GitHub release with the same files and the changelog section as notes.
+Tags with a suffix (`v0.4.0-rc1`) become pre-releases; pip only installs those when asked
+(`pip install --pre`).
+
+PyPI upload uses [Trusted Publishing](https://docs.pypi.org/trusted-publishers/): there is
+no API token in the repository. PyPI accepts uploads only from the `release.yml` workflow of
+this repository running in the GitHub environment `pypi`. If you rename the workflow file or
+the environment, change the trusted publisher on PyPI too. A version number can be uploaded
+to PyPI only once, so a broken release is fixed with a new patch version, not by moving
+the tag.
 
 ## Pull requests
 

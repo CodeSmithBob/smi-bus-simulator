@@ -21,8 +21,10 @@ All notable changes, one section per release, newest first. Versions follow
   `Motor.reported_position`; the Drive tab shows the value reported over SMI.
 * Release workflow: pushing a `v*` tag checks that the tag, `pyproject.toml`,
   `smisim.__version__` and CHANGELOG agree, runs lint and tests, builds the sdist and
-  wheel, and publishes a GitHub release with the changelog section as notes
-  (`scripts/release_check.py`).
+  wheel, uploads them to PyPI (Trusted Publishing, no stored token) and publishes a GitHub
+  release with the changelog section as notes (`scripts/release_check.py`).
+* On PyPI: `pip install smi-bus-simulator`. The README uses absolute links so the PyPI
+  project page shows its images and links.
 * Optional drive mechanics, all off by default: `slack` (gear backlash after every
   reversal), `top_offset` / `bottom_offset` (end positions beyond the physical travel),
   per-drive `tilt_degrees`. Profiles `venetian-tight`, `venetian-worn` and `roller-offset`

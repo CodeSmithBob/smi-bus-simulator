@@ -63,13 +63,43 @@ def test_release_workflow_runs_on_version_tags_and_publishes():
     wf = yaml.safe_load((ROOT / ".github" / "workflows" / "release.yml").read_text())
     triggers = wf[True] if True in wf else wf["on"]  # YAML 1.1 reads "on" as True
     assert triggers["push"]["tags"] == ["v*"]
-    assert wf["permissions"]["contents"] == "write"
-    steps = " ".join(str(s.get("run", "")) for s in wf["jobs"]["release"]["steps"])
-    assert "scripts/release_check.py" in steps and "pytest" in steps
-    assert "python -m build" in steps and "gh release create" in steps
+    jobs = wf["jobs"]
+
+    def runs(job):
+        return " ".join(str(s.get("run", "")) for s in jobs[job]["steps"])
+
+    build = runs("build")
+    assert "scripts/release_check.py" in build and "pytest" in build
+    assert "python -m build" in build and "twine check" in build
+
+    # PyPI Trusted Publishing: must match the publisher registered on pypi.org
+    # (workflow release.yml, environment "pypi").
+    pypi = jobs["pypi"]
+    assert pypi["needs"] == "build"
+    assert pypi["environment"]["name"] == "pypi"
+    assert pypi["permissions"] == {"id-token": "write"}
+    assert any(
+        str(s.get("uses", "")).startswith("pypa/gh-action-pypi-publish") for s in pypi["steps"]
+    )
+    # Only the publish job gets an OIDC token.
+    assert "id-token" not in wf.get("permissions", {})
+
+    assert jobs["github-release"]["needs"] == "pypi"
+    assert jobs["github-release"]["permissions"]["contents"] == "write"
+    assert "gh release create" in runs("github-release")
 
 
 def test_readme_does_not_pin_an_old_version():
     readme = (ROOT / "README.md").read_text()
     stale = re.findall(r"release \(?v?(\d+\.\d+(?:\.\d+)?)\)?", readme)
     assert all(v == smisim.__version__ for v in stale), stale
+
+
+def test_readme_links_work_on_pypi():
+    # PyPI shows README.md as the project page; relative links and images break there.
+    text = (ROOT / "README.md").read_text()
+    targets = re.findall(r"\]\(([^)]+)\)", text)
+    assert targets
+    relative = [t for t in targets if not t.startswith(("https://", "http://", "#"))]
+    assert relative == []
+    assert "pip install smi-bus-simulator" in text
